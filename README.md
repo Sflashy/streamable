@@ -26,7 +26,7 @@ Self-hosted video hosting platform for sharing game clips and short videos. No d
 ## Getting Started
 
 ```bash
-cp .env.example .env   # fill in UPLOAD_PASSWORD
+cp .env.example .env   # fill in PASSWORD
 npm install
 npm run dev            # development (auto-restart)
 npm start              # production
@@ -38,7 +38,7 @@ Open [http://localhost:3000](http://localhost:3000) and enter your upload passwo
 
 | Variable          | Default  | Description                                      |
 |-------------------|----------|--------------------------------------------------|
-| `UPLOAD_PASSWORD` | —        | Required. Protects upload, delete, and edit.     |
+| `PASSWORD`        | —        | Required. Protects upload, delete, and edit.     |
 | `PORT`            | `3000`   | Port the server listens on.                      |
 | `REGISTRY`        | —        | Docker registry hostname used by `build.sh`.     |
 | `IMAGE_TAG`       | `latest` | Image tag pulled on the server.                  |

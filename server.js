@@ -18,10 +18,10 @@ const DATA_FILE   = path.join(DATA_DIR, 'videos.json');
 const PUBLIC_DIR  = path.join(__dirname, 'public');
 
 const UPLOAD_LIMIT    = 1 * 1024 * 1024 * 1024; // 1 GB
-const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD || '';
+const PASSWORD = process.env.PASSWORD || '';
 
 function checkPassword(provided) {
-  return UPLOAD_PASSWORD !== '' && provided === UPLOAD_PASSWORD;
+  return PASSWORD !== '' && provided === PASSWORD;
 }
 
 // Escape string for use in HTML attribute values
@@ -121,7 +121,7 @@ app.post('/upload', (req, res) => {
   let fileError   = null;
   let limitHit    = false;
 
-  bb.on('file', (fieldname, stream, info) => {
+  bb.on('file', (_fieldname, stream, info) => {
     const { filename, mimeType } = info;
 
     if (!mimeType.startsWith('video/')) {

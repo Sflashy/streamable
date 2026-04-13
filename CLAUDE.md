@@ -15,7 +15,7 @@ No build step, no test suite, no linter configured.
 
 Copy `.env.example` to `.env` before running. Required variables:
 
-- `UPLOAD_PASSWORD` — protects upload, delete, and edit operations
+- `PASSWORD` — protects upload, delete, and edit operations
 - `REGISTRY` — Docker registry hostname for `build.sh`
 - `PORT` — host port (default 3000)
 - `IMAGE_TAG` — image tag pulled on server (default latest)
@@ -38,12 +38,12 @@ GET  /api/videos      → reads videos.json, strips token field
 POST /api/:slug/view  → increments views counter in videos.json
 PATCH /api/:slug      → updates title, requires password or per-video token
 DELETE /api/:slug     → removes file + thumbnail + JSON entry
-POST /api/auth        → verifies UPLOAD_PASSWORD, used by index.html gate
+POST /api/auth        → verifies PASSWORD, used by index.html gate
 ```
 
 ### Auth model
 
-`UPLOAD_PASSWORD` (env) is the single credential. It is checked via `X-Password` header on upload, and as the `token` query/body param on delete/edit. Per-video delete tokens (generated at upload time, stored in `videos.json`) are also accepted for backward compatibility.
+`PASSWORD` (env) is the single credential. It is checked via `X-Password` header on upload, and as the `token` query/body param on delete/edit. Per-video delete tokens (generated at upload time, stored in `videos.json`) are also accepted for backward compatibility.
 
 The frontend stores the verified password in `sessionStorage` (key `sp`). `index.html` shows a full-screen gate until authenticated. `watch.html` uses the stored password silently if present, otherwise prompts inline.
 
