@@ -1,0 +1,1718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Streamable — Upload</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0a;
+      --surface:  #111111;
+      --border:   #1e1e1e;
+      --amber:    #f5a623;
+      --amber-dim: #c17d0e;
+      --amber-glow: rgba(245,166,35,0.12);
+      --text:     #e8e8e8;
+      --muted:    #555;
+      --danger:   #e05252;
+      --radius:   4px;
+    }
+
+    html { height: 100%; }
+    body {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* Subtle scanline texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255,255,255,0.012) 2px,
+        rgba(255,255,255,0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Layout ────────────────────────────────────── */
+    .page {
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 56px 24px 80px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 52px;
+      opacity: 0;
+      transform: translateY(-12px);
+      animation: fadeUp 0.5s ease forwards;
+    }
+
+    .header-stats {
+      margin-left: auto;
+      display: flex;
+      gap: 16px;
+      align-items: baseline;
+    }
+
+    .stat-item {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+
+    .stat-item span {
+      color: #777;
+    }
+
+    .logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--amber);
+      letter-spacing: -0.5px;
+      text-decoration: none;
+    }
+
+    .logo-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 2px;
+    }
+
+    /* ── Drop zone ─────────────────────────────────── */
+    .drop-section {
+      opacity: 0;
+      animation: fadeUp 0.5s ease 0.1s forwards;
+    }
+
+    .drop-zone {
+      position: relative;
+      border: 2px dashed var(--amber-dim);
+      border-radius: var(--radius);
+      padding: 64px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+      background: transparent;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--amber);
+      background: var(--amber-glow);
+      box-shadow: 0 0 40px rgba(245,166,35,0.06) inset;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 20px;
+      border: 2px solid var(--amber-dim);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .drop-zone:hover .drop-icon,
+    .drop-zone.drag-over .drop-icon {
+      border-color: var(--amber);
+      transform: scale(1.05);
+    }
+
+    .drop-icon svg { display: block; }
+
+    .drop-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .drop-sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .drop-sub span {
+      color: var(--amber);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    /* ── Progress ──────────────────────────────────── */
+    #progress-wrap {
+      display: none;
+      margin-top: 20px;
+    }
+
+    #progress-wrap.visible { display: block; }
+
+    .progress-bar-track {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--amber);
+      border-radius: 2px;
+      transition: width 0.15s ease;
+    }
+
+    .progress-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Error / Result ────────────────────────────── */
+    #error-msg {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: rgba(224,82,82,0.08);
+      border: 1px solid rgba(224,82,82,0.3);
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--danger);
+    }
+
+    #result {
+      display: none;
+      margin-top: 20px;
+    }
+
+    #result.visible { display: block; }
+
+    .result-box {
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .result-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .result-link-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .result-link {
+      flex: 1;
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      color: var(--amber);
+      background: #0a0a0a;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .btn-copy {
+      flex-shrink: 0;
+      background: var(--amber);
+      color: #0a0a0a;
+      border: none;
+      border-radius: var(--radius);
+      padding: 9px 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn-copy:hover { background: #ffc04d; }
+    .btn-copy:active { transform: scale(0.96); }
+    .btn-copy.copied { background: #4caf76; }
+
+    .delete-row {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .delete-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .delete-token {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: #666;
+      word-break: break-all;
+    }
+
+    /* ── Divider ───────────────────────────────────── */
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 52px 0 32px;
+      opacity: 0;
+      animation: fadeUp 0.5s ease 0.2s forwards;
+    }
+
+    .section-divider::before,
+    .section-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .section-divider-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Video grid ────────────────────────────────── */
+    #videos-section {
+      opacity: 0;
+      animation: fadeUp 0.5s ease 0.3s forwards;
+    }
+
+    #videos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .video-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .video-card:hover {
+      border-color: #333;
+      transform: translateY(-2px);
+    }
+
+    .video-thumb {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #0d0d0d;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      text-decoration: none;
+      overflow: hidden;
+    }
+
+    .video-thumb::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.5));
+    }
+
+    .thumb-duration {
+      position: absolute;
+      bottom: 7px;
+      right: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: #fff;
+      background: rgba(0,0,0,0.72);
+      padding: 2px 5px;
+      border-radius: 3px;
+      z-index: 2;
+      letter-spacing: 0.3px;
+    }
+
+    .play-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid rgba(245,166,35,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, background 0.2s;
+      z-index: 1;
+    }
+
+    .video-thumb:hover .play-icon {
+      border-color: var(--amber);
+      background: var(--amber-glow);
+    }
+
+    .video-info {
+      padding: 12px;
+    }
+
+    .video-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+
+    .video-meta {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: 8px;
+    }
+
+    .video-actions {
+      padding: 0 12px 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-watch {
+      flex: 1;
+      padding: 7px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .btn-watch:hover { border-color: #444; background: #161616; }
+
+    .btn-edit {
+      padding: 6px 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-edit:hover { border-color: var(--amber-dim); color: var(--amber); }
+
+    .btn-privacy {
+      padding: 5px 7px;
+      background: transparent;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: opacity 0.15s;
+    }
+
+    .btn-privacy:hover { opacity: 0.75; }
+
+    .btn-del {
+      padding: 7px 10px;
+      background: transparent;
+      border: 1px solid rgba(224,82,82,0.25);
+      border-radius: var(--radius);
+      color: rgba(224,82,82,0.6);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-del:hover { border-color: var(--danger); color: var(--danger); }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 40px 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* ── Password gate ──────────────────────────────── */
+    #password-gate {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    #password-gate.hidden { display: none; }
+
+    .gate-box {
+      width: 100%;
+      max-width: 340px;
+      padding: 0 24px;
+    }
+
+    .gate-logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--amber);
+      margin-bottom: 32px;
+      display: block;
+    }
+
+    .gate-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .gate-input {
+      width: 100%;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: var(--radius);
+      padding: 11px 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 8px;
+      letter-spacing: 3px;
+    }
+
+    .gate-input:focus { border-color: var(--amber-dim); }
+    .gate-input.error { border-color: var(--danger); }
+
+    .gate-error {
+      font-size: 11px;
+      color: var(--danger);
+      min-height: 16px;
+      margin-bottom: 16px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    .gate-btn {
+      width: 100%;
+      padding: 11px;
+      background: var(--amber);
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0a0a0a;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .gate-btn:hover { background: #ffc04d; }
+    .gate-btn:active { transform: scale(0.98); }
+    .gate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Delete modal ───────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 28px 28px 24px;
+      width: 100%;
+      max-width: 400px;
+      transform: translateY(12px) scale(0.98);
+      transition: transform 0.2s;
+    }
+
+    .modal-backdrop.open .modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .modal-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .modal-input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #2a2a2a;
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 6px;
+    }
+
+    .modal-input:focus { border-color: var(--amber-dim); }
+    .modal-input.error { border-color: var(--danger); }
+
+    .modal-error {
+      font-size: 11px;
+      color: var(--danger);
+      min-height: 16px;
+      margin-bottom: 20px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .modal-cancel {
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .modal-cancel:hover { border-color: #444; color: var(--text); }
+
+    .modal-confirm {
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid rgba(224,82,82,0.4);
+      border-radius: var(--radius);
+      color: rgba(224,82,82,0.8);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .modal-confirm:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: rgba(224,82,82,0.06);
+    }
+
+    .modal-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Sort bar ───────────────────────────────────── */
+    .sort-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+
+    .sort-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-right: 4px;
+    }
+
+    .sort-btn {
+      padding: 5px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .sort-btn:hover { border-color: #444; color: var(--text); }
+    .sort-btn.active { border-color: var(--amber-dim); color: var(--amber); }
+
+    /* ── Search ─────────────────────────────────────── */
+    .search-wrap {
+      flex: 1;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .search-input {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 5px 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: var(--text);
+      outline: none;
+      width: 180px;
+      transition: border-color 0.15s, width 0.2s;
+    }
+
+    .search-input:focus { border-color: #444; width: 220px; }
+    .search-input::placeholder { color: var(--muted); }
+
+    /* ── Tag filter bar ─────────────────────────────── */
+    .tag-filter-bar {
+      display: none;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .filter-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-right: 2px;
+    }
+
+    .filter-btn {
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .filter-btn:hover { border-color: #444; color: var(--text); }
+    .filter-btn.active { border-color: var(--amber-dim); color: var(--amber); background: var(--amber-glow); }
+
+    /* ── Tag chips on cards ─────────────────────────── */
+    .tag-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .tag-chip {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--amber);
+      background: var(--amber-glow);
+      border: 1px solid rgba(245,166,35,0.2);
+      border-radius: 3px;
+      padding: 1px 5px;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .tag-chip:hover { background: rgba(245,166,35,0.18); border-color: var(--amber-dim); }
+
+    /* ── Bulk toolbar ───────────────────────────────── */
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+    }
+
+    .bulk-bar.visible { display: flex; }
+
+    .bulk-count {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text);
+      margin-right: 4px;
+    }
+
+    .btn-bulk {
+      padding: 5px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-bulk:hover { border-color: #444; color: var(--text); }
+
+    .btn-bulk.danger {
+      border-color: rgba(224,82,82,0.3);
+      color: rgba(224,82,82,0.7);
+    }
+
+    .btn-bulk.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+    .btn-bulk-cancel {
+      margin-left: auto;
+      padding: 5px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-bulk-cancel:hover { border-color: #444; color: var(--text); }
+
+    /* Select mode card overlay */
+    .select-mode .video-card { cursor: pointer; }
+
+    .card-checkbox {
+      display: none;
+      position: absolute;
+      top: 8px; left: 8px;
+      width: 18px; height: 18px;
+      background: rgba(0,0,0,0.6);
+      border: 2px solid rgba(255,255,255,0.4);
+      border-radius: 3px;
+      z-index: 3;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .select-mode .card-checkbox { display: flex; }
+
+    .video-card.selected .card-checkbox {
+      border-color: var(--amber);
+      background: var(--amber);
+    }
+
+    .video-card.selected { border-color: var(--amber-dim); }
+
+    /* Select mode activate button */
+    .btn-select-mode {
+      padding: 5px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-select-mode:hover { border-color: #444; color: var(--text); }
+
+    /* ── Private badge ──────────────────────────────── */
+    .private-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: #888;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #2a2a2a;
+      border-radius: 3px;
+      padding: 1px 5px;
+      letter-spacing: 0.3px;
+    }
+
+    .private-badge.is-private {
+      color: var(--amber);
+      background: var(--amber-glow);
+      border-color: rgba(245,166,35,0.25);
+    }
+
+    /* ── Modal label ────────────────────────────────── */
+    .modal-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+      margin-top: 2px;
+    }
+
+    /* ── Animations ─────────────────────────────────── */
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .video-card {
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 0.35s ease forwards;
+    }
+
+    /* ── Load more ──────────────────────────────────── */
+    .load-more-wrap {
+      display: flex;
+      justify-content: center;
+      margin-top: 28px;
+    }
+
+    .btn-load-more {
+      padding: 9px 28px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-load-more:hover { border-color: #444; color: var(--text); }
+  </style>
+</head>
+<body>
+  <!-- Password gate -->
+  <div id="password-gate">
+    <div class="gate-box">
+      <span class="gate-logo">streamable</span>
+      <div class="gate-label">Password</div>
+      <input class="gate-input" id="gate-input" type="password" placeholder="••••••••" autocomplete="current-password" />
+      <div class="gate-error" id="gate-error"></div>
+      <button class="gate-btn" id="gate-btn">ENTER</button>
+    </div>
+  </div>
+
+  <!-- Delete modal -->
+  <div class="modal-backdrop" id="delete-modal">
+    <div class="modal">
+      <div class="modal-title">Delete video</div>
+      <div class="modal-sub">Are you sure you want to permanently delete this video?</div>
+      <div class="modal-error" id="modal-error"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="modal-cancel">CANCEL</button>
+        <button class="modal-confirm" id="modal-confirm">DELETE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal-backdrop" id="edit-modal">
+    <div class="modal">
+      <div class="modal-title">Edit video</div>
+      <div class="modal-label" style="margin-top:16px;">Title</div>
+      <input class="modal-input" id="edit-title-input" type="text" autocomplete="off" />
+      <div class="modal-label">Tags <span style="opacity:.45;font-size:9px;letter-spacing:0">(comma-separated)</span></div>
+      <input class="modal-input" id="edit-tags-input" type="text" placeholder="valorant, highlight, clutch" autocomplete="off" />
+      <div class="modal-error" id="edit-error"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="edit-cancel">CANCEL</button>
+        <button class="modal-confirm" id="edit-confirm" style="border:1px solid rgba(245,166,35,0.4);color:rgba(245,166,35,0.8);">SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk tag modal -->
+  <div class="modal-backdrop" id="bulk-tag-modal">
+    <div class="modal">
+      <div class="modal-title">Add tag to selected</div>
+      <div class="modal-label" style="margin-top:16px;">Tag</div>
+      <input class="modal-input" id="bulk-tag-input" type="text" placeholder="e.g. valorant" autocomplete="off" />
+      <div class="modal-error" id="bulk-tag-error"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="bulk-tag-cancel">CANCEL</button>
+        <button class="modal-confirm" id="bulk-tag-confirm" style="border:1px solid rgba(245,166,35,0.4);color:rgba(245,166,35,0.8);">ADD</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <header>
+      <a class="logo" href="/">streamable</a>
+      <a href="/gallery" style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;border:1px solid var(--border);padding:2px 6px;border-radius:2px;text-decoration:none;transition:color .15s,border-color .15s;" onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber-dim)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">Gallery</a>
+      <div class="header-stats" id="header-stats"></div>
+    </header>
+
+    <!-- Drop zone -->
+    <section class="drop-section">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="video/*" />
+        <div class="drop-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 16 12 12 8 16"/>
+            <line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+        </div>
+        <p class="drop-title">Drop a video here</p>
+        <p class="drop-sub">or <span>browse files</span> &mdash; any video format accepted</p>
+      </div>
+
+      <!-- Progress -->
+      <div id="progress-wrap">
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-label">
+          <span id="progress-pct">0%</span>
+          <span id="progress-speed"></span>
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div id="error-msg"></div>
+
+      <!-- Result -->
+      <div id="result">
+        <div class="result-box">
+          <div class="result-label">Share link</div>
+          <div class="result-link-row">
+            <a class="result-link" id="result-url" href="#" target="_blank"></a>
+            <button class="btn-copy" id="btn-copy-link">COPY</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Divider -->
+    <div class="section-divider">
+      <span class="section-divider-label">Recent uploads</span>
+    </div>
+
+    <!-- Videos -->
+    <section id="videos-section">
+      <div class="sort-bar">
+        <span class="sort-label">Sort</span>
+        <button class="sort-btn active" data-sort="date">Newest</button>
+        <button class="sort-btn" data-sort="views">Most viewed</button>
+        <button class="sort-btn" data-sort="size">Largest</button>
+        <button class="sort-btn" data-sort="name">Name</button>
+        <div class="search-wrap">
+          <input class="search-input" id="search-input" type="text" placeholder="Search…" autocomplete="off" />
+        </div>
+        <button class="btn-select-mode" id="btn-select-mode">Select</button>
+      </div>
+      <div class="tag-filter-bar" id="tag-filter-bar"></div>
+      <div class="bulk-bar" id="bulk-bar">
+        <span class="bulk-count" id="bulk-count">0 selected</span>
+        <button class="btn-bulk" id="btn-bulk-select-all">Select all</button>
+        <button class="btn-bulk danger" id="btn-bulk-delete">Delete</button>
+        <button class="btn-bulk" id="btn-bulk-tag">Add tag</button>
+        <button class="btn-bulk-cancel" id="btn-bulk-cancel">Cancel</button>
+      </div>
+      <div id="videos-grid"><div class="empty-state">no videos yet</div></div>
+      <div class="load-more-wrap" id="load-more-wrap" style="display:none">
+        <button class="btn-load-more" id="btn-load-more">Load more</button>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    // ── Password gate ──────────────────────────────────
+    const gate      = document.getElementById('password-gate');
+    const gateInput = document.getElementById('gate-input');
+    const gateBtn   = document.getElementById('gate-btn');
+    const gateError = document.getElementById('gate-error');
+
+    function getPassword() { return sessionStorage.getItem('sp') || ''; }
+
+    if (getPassword()) {
+      gate.classList.add('hidden');
+    }
+
+    async function submitGate() {
+      const pw = gateInput.value;
+      if (!pw) return;
+      gateBtn.disabled = true;
+      const r = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (r.ok) {
+        sessionStorage.setItem('sp', pw);
+        gate.classList.add('hidden');
+      } else {
+        gateInput.classList.add('error');
+        gateError.textContent = 'Wrong password.';
+        gateBtn.disabled = false;
+        gateInput.select();
+      }
+    }
+
+    gateBtn.addEventListener('click', submitGate);
+    gateInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitGate(); });
+    gateInput.addEventListener('input', () => { gateInput.classList.remove('error'); gateError.textContent = ''; });
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPct = document.getElementById('progress-pct');
+    const progressSpeed = document.getElementById('progress-speed');
+    const errorMsg = document.getElementById('error-msg');
+    const result = document.getElementById('result');
+    const resultUrl   = document.getElementById('result-url');
+    const btnCopyLink = document.getElementById('btn-copy-link');
+    const videosGrid = document.getElementById('videos-grid');
+
+    // Drag & drop
+    ['dragenter', 'dragover'].forEach(e => {
+      dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('drag-over'); });
+    });
+    ['dragleave', 'drop'].forEach(e => {
+      dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('drag-over'); });
+    });
+    dropZone.addEventListener('drop', ev => {
+      const file = ev.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.style.display = 'block';
+    }
+
+    function hideError() { errorMsg.style.display = 'none'; }
+
+    function handleFile(file) {
+      hideError();
+      result.classList.remove('visible');
+      result.style.display = 'none';
+
+      if (!file.type.startsWith('video/')) {
+        showError('Only video files are accepted. Please select a valid video.');
+        return;
+      }
+
+      if (file.size > 1 * 1024 * 1024 * 1024) {
+        showError('File exceeds the 1 GB upload limit.');
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('video', file);
+
+      const xhr = new XMLHttpRequest();
+      let startTime = Date.now();
+
+      xhr.upload.addEventListener('progress', ev => {
+        if (!ev.lengthComputable) return;
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        progressFill.style.width = pct + '%';
+        progressPct.textContent = pct + '%';
+
+        const elapsed = (Date.now() - startTime) / 1000;
+        const speed = ev.loaded / elapsed;
+        progressSpeed.textContent = formatBytes(speed) + '/s';
+      });
+
+      xhr.addEventListener('load', () => {
+        progressWrap.classList.remove('visible');
+        progressWrap.style.display = 'none';
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          const fullUrl = location.origin + data.url;
+          resultUrl.href = data.url;
+          resultUrl.textContent = fullUrl;
+          result.style.display = 'block';
+          result.classList.add('visible');
+          // Reset file input
+          fileInput.value = '';
+          loadVideos();
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            showError(err.error || 'Upload failed.');
+          } catch { showError('Upload failed.'); }
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        progressWrap.classList.remove('visible');
+        progressWrap.style.display = 'none';
+        showError('Network error during upload.');
+      });
+
+      xhr.open('POST', '/upload');
+      xhr.setRequestHeader('x-password', getPassword());
+      progressFill.style.width = '0%';
+      progressPct.textContent = '0%';
+      progressSpeed.textContent = '';
+      progressWrap.style.display = 'block';
+      progressWrap.classList.add('visible');
+      startTime = Date.now();
+      xhr.send(fd);
+    }
+
+    // Copy link
+    btnCopyLink.addEventListener('click', () => {
+      navigator.clipboard.writeText(resultUrl.textContent).then(() => {
+        btnCopyLink.textContent = 'COPIED';
+        btnCopyLink.classList.add('copied');
+        setTimeout(() => {
+          btnCopyLink.textContent = 'COPY';
+          btnCopyLink.classList.remove('copied');
+        }, 1800);
+      });
+    });
+
+    // Load video grid
+    let allVideos   = [];
+    let currentSort = 'date';
+    let activeTag   = null;
+    let searchQuery = '';
+    const PAGE_SIZE = 24;
+    let visibleCount = PAGE_SIZE;
+
+    const sortFns = {
+      date:  (a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt),
+      views: (a, b) => b.views - a.views,
+      size:  (a, b) => b.size - a.size,
+      name:  (a, b) => (a.title || a.filename).localeCompare(b.title || b.filename),
+    };
+
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentSort = btn.dataset.sort;
+        visibleCount = PAGE_SIZE;
+        document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderGrid();
+      });
+    });
+
+    document.getElementById('btn-load-more').addEventListener('click', () => {
+      visibleCount += PAGE_SIZE;
+      renderGrid();
+      // Re-attach select listeners if in select mode
+      if (selectMode) {
+        videosGrid.querySelectorAll('.video-thumb').forEach(thumb => {
+          thumb.addEventListener('click', selectClickHandler, true);
+        });
+      }
+    });
+
+    const searchInput = document.getElementById('search-input');
+    searchInput.addEventListener('input', () => {
+      searchQuery = searchInput.value.trim().toLowerCase();
+      visibleCount = PAGE_SIZE;
+      renderGrid();
+    });
+
+    function renderTagFilter() {
+      const bar = document.getElementById('tag-filter-bar');
+      const allTags = [...new Set(allVideos.flatMap(v => v.tags || []))].sort();
+      if (!allTags.length) { bar.style.display = 'none'; return; }
+      bar.style.display = 'flex';
+      bar.innerHTML =
+        `<span class="filter-label">Tag</span>` +
+        `<button class="filter-btn ${!activeTag ? 'active' : ''}" data-tag="">All</button>` +
+        allTags.map(t =>
+          `<button class="filter-btn ${activeTag === t ? 'active' : ''}" data-tag="${escHtml(t)}">${escHtml(t)}</button>`
+        ).join('');
+      bar.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeTag = btn.dataset.tag || null;
+          visibleCount = PAGE_SIZE;
+          renderTagFilter();
+          renderGrid();
+        });
+      });
+    }
+
+    function renderGrid() {
+      let videos = [...allVideos];
+
+      if (searchQuery) {
+        videos = videos.filter(v =>
+          (v.title || v.filename).toLowerCase().includes(searchQuery) ||
+          (v.tags || []).some(t => t.toLowerCase().includes(searchQuery))
+        );
+      }
+
+      if (activeTag) {
+        videos = videos.filter(v => (v.tags || []).includes(activeTag));
+      }
+
+      videos.sort(sortFns[currentSort]);
+
+      const loadMoreWrap = document.getElementById('load-more-wrap');
+
+      if (!videos.length) {
+        videosGrid.innerHTML = `<div class="empty-state">${allVideos.length ? 'no matches' : 'no videos yet'}</div>`;
+        loadMoreWrap.style.display = 'none';
+        return;
+      }
+
+      const page = videos.slice(0, visibleCount);
+      loadMoreWrap.style.display = videos.length > visibleCount ? 'flex' : 'none';
+      document.getElementById('btn-load-more').textContent =
+        `Load more (${videos.length - visibleCount} remaining)`;
+
+      videosGrid.innerHTML = '';
+      page.forEach((v, i) => {
+        const tagHtml = v.tags && v.tags.length
+          ? `<div class="tag-chips">${v.tags.map(t => `<span class="tag-chip" data-tag="${escHtml(t)}">${escHtml(t)}</span>`).join('')}</div>`
+          : '';
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.style.animationDelay = (i * 0.04) + 's';
+        card.innerHTML = `
+          <a class="video-thumb" href="/${v.slug}" style="${v.hasThumbnail ? `background-image:url('/thumb/${v.slug}');background-size:cover;background-position:center;` : ''}">
+            <div class="card-checkbox">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="play-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#f5a623" style="margin-left:2px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+            ${v.duration ? `<span class="thumb-duration">${fmtDuration(v.duration)}</span>` : ''}
+          </a>
+          <div class="video-info">
+            <div class="video-name" title="${escHtml(v.title)}" id="title-${v.slug}">${escHtml(v.title)}</div>
+            <div class="video-meta">
+              <span>${formatBytes(v.size)}</span>
+              <span>${v.views} view${v.views === 1 ? '' : 's'}</span>
+              <span>${formatDate(v.uploadedAt)}</span>
+            </div>
+            ${tagHtml}
+          </div>
+          <div class="video-actions">
+            <a class="btn-watch" href="/${v.slug}">Watch</a>
+            <button class="btn-privacy" data-slug="${v.slug}" data-private="${v.private}" title="${v.private ? 'Make public' : 'Make private'}">
+              <span class="private-badge ${v.private ? 'is-private' : ''}" id="priv-${v.slug}">${v.private ? 'PRIVATE' : 'PUBLIC'}</span>
+            </button>
+            <button class="btn-edit" data-slug="${v.slug}" title="Edit">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn-del" data-slug="${v.slug}">Delete</button>
+          </div>
+        `;
+        videosGrid.appendChild(card);
+      });
+
+      videosGrid.querySelectorAll('.btn-del').forEach(btn => {
+        btn.addEventListener('click', () => openDeleteModal(btn.dataset.slug));
+      });
+
+      videosGrid.querySelectorAll('.btn-edit').forEach(btn => {
+        btn.addEventListener('click', () => openEditModal(btn.dataset.slug));
+      });
+
+      videosGrid.querySelectorAll('.btn-privacy').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const slug    = btn.dataset.slug;
+          const isPriv  = btn.dataset.private === 'true';
+          const newPriv = !isPriv;
+          const r = await fetch(`/api/${slug}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: getPassword(), private: newPriv }),
+          });
+          if (r.ok) {
+            const video = allVideos.find(v => v.slug === slug);
+            if (video) video.private = newPriv;
+            btn.dataset.private = newPriv;
+            btn.title = newPriv ? 'Make public' : 'Make private';
+            const badge = document.getElementById(`priv-${slug}`);
+            if (badge) {
+              badge.textContent = newPriv ? 'PRIVATE' : 'PUBLIC';
+              badge.className   = `private-badge${newPriv ? ' is-private' : ''}`;
+            }
+          }
+        });
+      });
+
+      // Tag chip click → filter
+      videosGrid.querySelectorAll('.tag-chip').forEach(chip => {
+        chip.addEventListener('click', e => {
+          e.preventDefault(); e.stopPropagation();
+          activeTag = chip.dataset.tag;
+          renderTagFilter();
+          renderGrid();
+        });
+      });
+    }
+
+    async function loadVideos() {
+      try {
+        const [videosRes, statsRes] = await Promise.all([
+          fetch('/api/videos', { headers: { 'x-password': getPassword() } }),
+          fetch('/api/stats'),
+        ]);
+        allVideos = await videosRes.json();
+        renderTagFilter();
+        renderGrid();
+
+        const stats    = await statsRes.json();
+        const statsEl  = document.getElementById('header-stats');
+        if (statsEl && stats.count !== undefined) {
+          statsEl.innerHTML =
+            `<span class="stat-item"><span>${stats.count}</span> video${stats.count === 1 ? '' : 's'}</span>` +
+            `<span class="stat-item"><span>${formatBytes(stats.totalSize)}</span> stored</span>` +
+            `<span class="stat-item"><span>${stats.totalViews}</span> view${stats.totalViews === 1 ? '' : 's'}</span>`;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Delete modal
+    const modalBackdrop = document.getElementById('delete-modal');
+    const modalError    = document.getElementById('modal-error');
+    const modalConfirm  = document.getElementById('modal-confirm');
+    const modalCancel   = document.getElementById('modal-cancel');
+    let   pendingSlug   = null;
+
+    function openDeleteModal(slug) {
+      pendingSlug = slug;
+      modalError.textContent = '';
+      modalConfirm.disabled = false;
+      modalConfirm.textContent = 'DELETE';
+      modalBackdrop.classList.add('open');
+    }
+
+    function closeModal() {
+      modalBackdrop.classList.remove('open');
+      pendingSlug = null;
+    }
+
+    modalCancel.addEventListener('click', closeModal);
+    modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    modalConfirm.addEventListener('click', async () => {
+      modalConfirm.disabled = true;
+      modalConfirm.textContent = 'DELETING…';
+      const r = await fetch(`/api/${pendingSlug}?token=${encodeURIComponent(getPassword())}`, { method: 'DELETE' });
+      if (r.ok) {
+        closeModal();
+        loadVideos();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        modalError.textContent = d.error || 'Delete failed.';
+        modalConfirm.disabled = false;
+        modalConfirm.textContent = 'DELETE';
+      }
+    });
+
+    // Edit modal
+    const editModal    = document.getElementById('edit-modal');
+    const editTitleInp = document.getElementById('edit-title-input');
+    const editTagsInp  = document.getElementById('edit-tags-input');
+    const editError    = document.getElementById('edit-error');
+    const editConfirm  = document.getElementById('edit-confirm');
+    let   editingSlug  = null;
+
+    function openEditModal(slug) {
+      const video = allVideos.find(v => v.slug === slug);
+      if (!video) return;
+      editingSlug = slug;
+      editTitleInp.value = video.title || '';
+      editTagsInp.value  = (video.tags || []).join(', ');
+      editError.textContent = '';
+      editTitleInp.classList.remove('error');
+      editConfirm.disabled = false;
+      editConfirm.textContent = 'SAVE';
+      editModal.classList.add('open');
+      setTimeout(() => editTitleInp.focus(), 50);
+    }
+
+    document.getElementById('edit-cancel').addEventListener('click', () => editModal.classList.remove('open'));
+    editModal.addEventListener('click', e => { if (e.target === editModal) editModal.classList.remove('open'); });
+    editTitleInp.addEventListener('keydown', e => { if (e.key === 'Enter') editTagsInp.focus(); });
+    editTagsInp.addEventListener('keydown',  e => { if (e.key === 'Enter') editConfirm.click(); });
+
+    editConfirm.addEventListener('click', async () => {
+      const title = editTitleInp.value.trim();
+      if (!title) { editTitleInp.classList.add('error'); editError.textContent = 'Title cannot be empty.'; return; }
+
+      const tags = editTagsInp.value.split(',').map(t => t.trim()).filter(Boolean);
+
+      editConfirm.disabled = true;
+      editConfirm.textContent = 'SAVING…';
+
+      const r = await fetch(`/api/${editingSlug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: getPassword(), title, tags }),
+      });
+
+      if (r.ok) {
+        const d = await r.json();
+        // Update local cache
+        const video = allVideos.find(v => v.slug === editingSlug);
+        if (video) { video.title = d.title; video.tags = d.tags; }
+        editModal.classList.remove('open');
+        renderTagFilter();
+        renderGrid();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        editError.textContent = d.error || 'Update failed.';
+        editConfirm.disabled = false;
+        editConfirm.textContent = 'SAVE';
+      }
+    });
+
+    // ── Bulk operations ────────────────────────────────
+    let selectMode   = false;
+    let selectedSlugs = new Set();
+
+    const bulkBar    = document.getElementById('bulk-bar');
+    const bulkCount  = document.getElementById('bulk-count');
+    const btnSelectMode = document.getElementById('btn-select-mode');
+
+    function enterSelectMode() {
+      selectMode = true;
+      selectedSlugs.clear();
+      videosGrid.classList.add('select-mode');
+      bulkBar.classList.add('visible');
+      btnSelectMode.style.display = 'none';
+      updateBulkCount();
+      // Cards in select mode: click selects instead of navigating
+      videosGrid.querySelectorAll('.video-card').forEach(card => {
+        card.querySelector('.video-thumb').addEventListener('click', selectClickHandler, true);
+      });
+    }
+
+    function exitSelectMode() {
+      selectMode = false;
+      selectedSlugs.clear();
+      videosGrid.classList.remove('select-mode');
+      videosGrid.querySelectorAll('.video-card').forEach(c => c.classList.remove('selected'));
+      bulkBar.classList.remove('visible');
+      btnSelectMode.style.display = '';
+    }
+
+    function selectClickHandler(e) {
+      if (!selectMode) return;
+      e.preventDefault();
+      const card = e.currentTarget.closest('.video-card');
+      const slug = card.querySelector('.btn-del').dataset.slug;
+      if (selectedSlugs.has(slug)) { selectedSlugs.delete(slug); card.classList.remove('selected'); }
+      else { selectedSlugs.add(slug); card.classList.add('selected'); }
+      updateBulkCount();
+    }
+
+    function updateBulkCount() {
+      const n = selectedSlugs.size;
+      bulkCount.textContent = `${n} selected`;
+    }
+
+    btnSelectMode.addEventListener('click', enterSelectMode);
+    document.getElementById('btn-bulk-cancel').addEventListener('click', exitSelectMode);
+
+    document.getElementById('btn-bulk-select-all').addEventListener('click', () => {
+      const cards = videosGrid.querySelectorAll('.video-card');
+      const allSelected = cards.length === selectedSlugs.size;
+      if (allSelected) {
+        selectedSlugs.clear();
+        cards.forEach(c => c.classList.remove('selected'));
+      } else {
+        cards.forEach(c => {
+          const slug = c.querySelector('.btn-del').dataset.slug;
+          selectedSlugs.add(slug);
+          c.classList.add('selected');
+        });
+      }
+      updateBulkCount();
+    });
+
+    document.getElementById('btn-bulk-delete').addEventListener('click', async () => {
+      if (!selectedSlugs.size) return;
+      const n = selectedSlugs.size;
+      if (!confirm(`Delete ${n} video${n === 1 ? '' : 's'}?`)) return;
+      const pw = getPassword();
+      await Promise.all([...selectedSlugs].map(slug =>
+        fetch(`/api/${slug}?token=${encodeURIComponent(pw)}`, { method: 'DELETE' })
+      ));
+      exitSelectMode();
+      loadVideos();
+    });
+
+    // Bulk tag modal
+    const bulkTagModal   = document.getElementById('bulk-tag-modal');
+    const bulkTagInput   = document.getElementById('bulk-tag-input');
+    const bulkTagError   = document.getElementById('bulk-tag-error');
+    const bulkTagConfirm = document.getElementById('bulk-tag-confirm');
+
+    document.getElementById('btn-bulk-tag').addEventListener('click', () => {
+      if (!selectedSlugs.size) return;
+      bulkTagInput.value = '';
+      bulkTagError.textContent = '';
+      bulkTagModal.classList.add('open');
+      setTimeout(() => bulkTagInput.focus(), 50);
+    });
+
+    document.getElementById('bulk-tag-cancel').addEventListener('click', () => bulkTagModal.classList.remove('open'));
+    bulkTagModal.addEventListener('click', e => { if (e.target === bulkTagModal) bulkTagModal.classList.remove('open'); });
+    bulkTagInput.addEventListener('keydown', e => { if (e.key === 'Enter') bulkTagConfirm.click(); });
+
+    bulkTagConfirm.addEventListener('click', async () => {
+      const newTag = bulkTagInput.value.trim();
+      if (!newTag) { bulkTagError.textContent = 'Tag cannot be empty.'; return; }
+      bulkTagConfirm.disabled = true;
+      bulkTagConfirm.textContent = 'ADDING…';
+      const pw = getPassword();
+      await Promise.all([...selectedSlugs].map(slug => {
+        const video = allVideos.find(v => v.slug === slug);
+        const tags  = [...new Set([...(video?.tags || []), newTag])];
+        return fetch(`/api/${slug}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: pw, tags }),
+        }).then(r => r.ok && (video.tags = tags));
+      }));
+      bulkTagModal.classList.remove('open');
+      bulkTagConfirm.disabled = false;
+      bulkTagConfirm.textContent = 'ADD';
+      exitSelectMode();
+      renderTagFilter();
+      renderGrid();
+    });
+
+    function fmtDuration(s) {
+      if (!s) return '';
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60).toString().padStart(2, '0');
+      return h ? `${h}:${String(m).padStart(2,'0')}:${sec}` : `${m}:${sec}`;
+    }
+
+    function formatBytes(b) {
+      if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB';
+      if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
+      if (b >= 1e3) return (b / 1e3).toFixed(1) + ' KB';
+      return b + ' B';
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    loadVideos();
+  </script>
+</body>
+</html>

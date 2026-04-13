@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Streamable — Watch</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #111111;
+      --border:    #1e1e1e;
+      --amber:     #f5a623;
+      --amber-dim: #c17d0e;
+      --amber-glow: rgba(245,166,35,0.1);
+      --text:      #e8e8e8;
+      --muted:     #555;
+      --danger:    #e05252;
+      --radius:    4px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .page {
+      width: 90%;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      padding: 16px 0;
+      opacity: 0;
+      animation: fadeUp 0.45s ease forwards;
+    }
+
+    .logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--amber);
+      text-decoration: none;
+      letter-spacing: -0.5px;
+    }
+
+    /* ── Player ──────────────────────────────────────── */
+    .player-section {
+      opacity: 0;
+      animation: fadeUp 0.45s ease 0.1s forwards;
+    }
+
+    .video-container {
+      position: relative;
+      background: #000;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      max-height: calc(100vh - 210px);
+      aspect-ratio: 16/9;
+      background: #000;
+    }
+
+    .video-container:fullscreen,
+    .video-container:-webkit-full-screen {
+      border: none;
+      border-radius: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .video-container:fullscreen video,
+    .video-container:-webkit-full-screen video {
+      width: 100%;
+      height: 100%;
+      max-height: 100vh;
+      aspect-ratio: unset;
+      object-fit: contain;
+    }
+
+    /* ── Custom controls ─────────────────────────────── */
+    .controls {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 0 14px 12px;
+      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+
+    .video-container:hover .controls,
+    .video-container.paused .controls { opacity: 1; }
+
+    .seek-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .time {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.7);
+      white-space: nowrap;
+      min-width: 80px;
+    }
+
+    .time-right { text-align: right; }
+
+    .seek-track {
+      flex: 1;
+      height: 3px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 2px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .seek-fill {
+      height: 100%;
+      background: var(--amber);
+      border-radius: 2px;
+      width: 0%;
+      pointer-events: none;
+    }
+
+    .seek-thumb {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 11px; height: 11px;
+      background: var(--amber);
+      border-radius: 50%;
+      left: 0%;
+      transition: transform 0.1s;
+    }
+
+    .seek-track:hover .seek-thumb { transform: translate(-50%, -50%) scale(1.3); }
+
+    .chapter-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+      cursor: pointer;
+    }
+
+    .chapter-marker-tick {
+      width: 2px;
+      height: 9px;
+      background: rgba(255,255,255,0.5);
+      border-radius: 1px;
+      transform: translateY(-50%);
+      transition: background 0.15s, height 0.1s;
+      margin: 0 auto;
+    }
+
+    .chapter-marker:hover .chapter-marker-tick { background: #fff; height: 12px; }
+
+    .chapter-marker-label {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: #fff;
+      background: rgba(0,0,0,0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+    }
+
+    .chapter-marker:hover .chapter-marker-label { opacity: 1; }
+
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ctrl-btn {
+      width: 32px; height: 32px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .ctrl-btn:hover { background: rgba(255,255,255,0.08); }
+    .ctrl-btn svg { display: block; }
+
+    .volume-wrap { display: flex; align-items: center; gap: 6px; }
+
+    .volume-slider {
+      -webkit-appearance: none;
+      width: 70px; height: 3px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 11px; height: 11px;
+      background: var(--amber);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .spacer { flex: 1; }
+
+    .speed-btn {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.6);
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 3px;
+      padding: 3px 7px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .speed-btn:hover { color: var(--amber); border-color: var(--amber-dim); }
+
+    .play-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .video-container.paused .play-overlay { opacity: 1; }
+
+    .play-circle {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.6);
+      border: 2px solid rgba(245,166,35,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    /* ── Unmute banner ───────────────────────────────── */
+    .unmute-banner {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      background: rgba(0,0,0,0.72);
+      border: 1px solid rgba(245,166,35,0.35);
+      border-radius: 20px;
+      backdrop-filter: blur(6px);
+      cursor: pointer;
+      z-index: 10;
+      transition: opacity 0.3s;
+      white-space: nowrap;
+    }
+    .unmute-banner svg { flex-shrink: 0; }
+    .unmute-banner span {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: var(--amber);
+      text-transform: uppercase;
+    }
+    .unmute-banner.hidden { opacity: 0; pointer-events: none; }
+
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+    }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--amber);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Info bar ────────────────────────────────────── */
+    .info-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0 24px;
+      gap: 12px;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeUp 0.45s ease 0.2s forwards;
+    }
+
+    .title-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .title-meta {
+      min-width: 0;
+    }
+
+    .video-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 600px;
+    }
+
+    .video-views {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .video-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 7px;
+    }
+
+    .tag-chip {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--amber);
+      background: rgba(245,166,35,0.08);
+      border: 1px solid rgba(245,166,35,0.2);
+      border-radius: 3px;
+      padding: 2px 6px;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-edit-title {
+      flex-shrink: 0;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      border-radius: 3px;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .btn-edit-title:hover { color: var(--amber); background: rgba(245,166,35,0.08); }
+
+    .action-btns {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      padding: 7px 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      letter-spacing: 0.5px;
+    }
+
+    .btn:active { transform: scale(0.96); }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover { border-color: #444; background: #161616; }
+    .btn-outline.success { border-color: #4caf76; color: #4caf76; }
+
+    .btn-amber {
+      background: transparent;
+      border: 1px solid rgba(245,166,35,0.35);
+      color: rgba(245,166,35,0.8);
+    }
+
+    .btn-amber:hover { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+
+    .btn-danger {
+      background: transparent;
+      border: 1px solid rgba(224,82,82,0.3);
+      color: rgba(224,82,82,0.7);
+    }
+
+    .btn-danger:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Modals ──────────────────────────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+
+    .modal-backdrop.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 28px 28px 24px;
+      width: 100%;
+      max-width: 400px;
+      transform: translateY(12px) scale(0.98);
+      transition: transform 0.2s;
+    }
+
+    .modal-backdrop.open .modal { transform: translateY(0) scale(1); }
+
+    .modal-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .modal-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .modal-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .modal-input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #2a2a2a;
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 6px;
+    }
+
+    .modal-input:focus { border-color: var(--amber-dim); }
+    .modal-input.error { border-color: var(--danger); }
+
+    .modal-error {
+      font-size: 11px;
+      color: var(--danger);
+      min-height: 16px;
+      margin-bottom: 16px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .modal-cancel {
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .modal-cancel:hover { border-color: #444; color: var(--text); }
+
+    .modal-confirm {
+      padding: 8px 16px;
+      background: transparent;
+      border-radius: var(--radius);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .modal-confirm.danger {
+      border: 1px solid rgba(224,82,82,0.4);
+      color: rgba(224,82,82,0.8);
+    }
+
+    .modal-confirm.danger:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: rgba(224,82,82,0.06);
+    }
+
+    .modal-confirm.amber {
+      border: 1px solid rgba(245,166,35,0.4);
+      color: rgba(245,166,35,0.8);
+    }
+
+    .modal-confirm.amber:hover {
+      border-color: var(--amber);
+      color: var(--amber);
+      background: var(--amber-glow);
+    }
+
+    .modal-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .chapter-items { margin-bottom: 12px; max-height: 200px; overflow-y: auto; }
+
+    .chapter-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chapter-item:last-child { border-bottom: none; }
+
+    .ch-item-time {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--amber);
+      min-width: 42px;
+      cursor: pointer;
+    }
+
+    .ch-item-time:hover { opacity: 0.7; }
+
+    .ch-item-label { flex: 1; font-size: 12px; color: var(--text); }
+
+    .ch-item-del {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 4px;
+      transition: color 0.15s;
+    }
+
+    .ch-item-del:hover { color: var(--danger); }
+
+    .ch-add-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .ch-add-row .modal-input { margin-bottom: 0; }
+    .ch-time-input { width: 72px !important; flex-shrink: 0; }
+
+    .btn-ch-add {
+      flex-shrink: 0;
+      padding: 9px 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-ch-add:hover { border-color: var(--amber-dim); color: var(--amber); }
+
+    /* ── Chapter list ────────────────────────────────── */
+    .chapter-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 12px 0 4px;
+    }
+
+    .chapter-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 11px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .chapter-pill:hover { border-color: #444; color: var(--text); }
+
+    .chapter-pill.active {
+      border-color: var(--amber-dim);
+      color: var(--amber);
+      background: var(--amber-glow);
+    }
+
+    .chapter-pill-time { opacity: 0.6; }
+
+    .current-chapter {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--amber);
+      opacity: 0.8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+    }
+
+    .modal-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* ── 404 ─────────────────────────────────────────── */
+    .not-found { text-align: center; padding: 80px 0; }
+
+    .not-found h2 {
+      font-family: 'Space Mono', monospace;
+      font-size: 48px;
+      color: var(--border);
+      margin-bottom: 12px;
+    }
+
+    .not-found p { color: var(--muted); font-size: 14px; }
+    .not-found a { color: var(--amber); text-decoration: none; }
+
+    /* ── Context menu ────────────────────────────────── */
+    .ctx-menu {
+      position: fixed;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      padding: 4px 0;
+      z-index: 600;
+      min-width: 170px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+      display: none;
+    }
+
+    .ctx-menu.open { display: block; }
+
+    .ctx-item {
+      padding: 8px 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      transition: background 0.1s;
+      user-select: none;
+    }
+
+    .ctx-item:hover { background: rgba(255,255,255,0.06); }
+    .ctx-item.amber { color: var(--amber); }
+    .ctx-item.amber:hover { background: var(--amber-glow); }
+
+    .ctx-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    /* ── Debug info overlay ──────────────────────────── */
+    .debug-overlay {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(0,0,0,0.82);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 5px;
+      padding: 12px 14px;
+      backdrop-filter: blur(8px);
+      z-index: 20;
+      min-width: 200px;
+      display: none;
+    }
+    .debug-overlay.open { display: block; }
+    .debug-row {
+      display: flex;
+      gap: 10px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .debug-row:last-child { border-bottom: none; }
+    .debug-key {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      width: 64px;
+      flex-shrink: 0;
+      padding-top: 1px;
+    }
+    .debug-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--text);
+    }
+
+    /* ── Animations ──────────────────────────────────── */
+    @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+    header        { transform: translateY(-10px); }
+    .player-section { transform: translateY(6px); }
+    .info-bar     { transform: translateY(6px); }
+  </style>
+</head>
+<body>
+
+  <!-- Delete modal -->
+  <div class="modal-backdrop" id="delete-modal">
+    <div class="modal">
+      <div class="modal-title">Delete video</div>
+      <div class="modal-sub" id="del-sub">Are you sure you want to permanently delete this video?</div>
+      <input class="modal-input" id="del-token" type="password" placeholder="password" autocomplete="off" style="display:none" />
+      <div class="modal-error" id="del-error"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="del-cancel">CANCEL</button>
+        <button class="modal-confirm danger" id="del-confirm">DELETE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chapters modal -->
+  <div class="modal-backdrop" id="chapters-modal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-title">Chapters</div>
+      <div class="chapter-items" id="ch-items"></div>
+      <div class="ch-add-row">
+        <input class="modal-input ch-time-input" id="ch-time" type="text" placeholder="0:00" />
+        <input class="modal-input" id="ch-label" type="text" placeholder="Chapter label…" />
+        <button class="btn-ch-add" id="btn-ch-add">+ Add</button>
+      </div>
+      <input class="modal-input" id="chapters-token" type="password" placeholder="password" autocomplete="off" style="display:none;margin-top:6px" />
+      <div class="modal-error" id="chapters-error"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="chapters-cancel">CANCEL</button>
+        <button class="modal-confirm amber" id="chapters-save">SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal-backdrop" id="edit-modal">
+    <div class="modal">
+      <div class="modal-title">Edit video</div>
+      <div class="modal-label" style="margin-top:16px;">Title</div>
+      <input class="modal-input" id="edit-title" type="text" autocomplete="off" />
+      <div class="modal-label">Tags <span style="opacity:.45;font-size:9px;letter-spacing:0">(comma-separated)</span></div>
+      <input class="modal-input" id="edit-tags" type="text" placeholder="valorant, highlight, clutch" autocomplete="off" />
+      <input class="modal-input" id="edit-token" type="password" placeholder="password" autocomplete="off" style="display:none" />
+      <div class="modal-error" id="edit-error"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="edit-cancel">CANCEL</button>
+        <button class="modal-confirm amber" id="edit-confirm">SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Video context menu -->
+  <div class="ctx-menu" id="ctx-menu">
+    <div class="ctx-item" id="ctx-copy">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy link
+    </div>
+    <div class="ctx-item amber" id="ctx-from-here">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 8 16 12 12 16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Copy link from here
+    </div>
+    <div class="ctx-item" id="ctx-add-chapter">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add chapter here
+    </div>
+    <div class="ctx-item" id="ctx-debug">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Video info
+    </div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" id="ctx-download">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download
+    </div>
+  </div>
+
+  <div class="page">
+    <header>
+      <a class="logo" href="/">streamable</a>
+    </header>
+    <div id="app"></div>
+  </div>
+
+  <script>
+  (async () => {
+    const app  = document.getElementById('app');
+    const slug = location.pathname.replace(/^\//, '').replace(/\/$/, '');
+
+    if (!/^[a-f0-9]{8}$/.test(slug)) { renderNotFound(); return; }
+
+    let meta = null;
+    try {
+      const res = await fetch('/api/videos');
+      const videos = await res.json();
+      meta = videos.find(v => v.slug === slug);
+    } catch {}
+
+    if (!meta) { renderNotFound(); return; }
+
+    // Increment view counter (fire-and-forget)
+    fetch(`/api/${slug}/view`, { method: 'POST' }).catch(() => {});
+
+    // Read ?t= start-time param
+    const startTime = parseFloat(new URLSearchParams(location.search).get('t')) || 0;
+
+    app.innerHTML = `
+      <section class="player-section">
+        <div class="video-container paused" id="vc">
+          <div class="loading-overlay" id="loading"><div class="spinner"></div></div>
+          <video id="vid" preload="auto" muted ${meta.hasThumbnail ? `poster="/thumb/${slug}"` : ''}></video>
+          <div class="debug-overlay" id="debug-overlay"></div>
+          <div class="unmute-banner" id="unmute-banner">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+            <span>Click to unmute</span>
+          </div>
+          <div class="play-overlay">
+            <div class="play-circle">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#f5a623"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+          </div>
+          <div class="controls">
+            <div class="seek-row">
+              <span class="time" id="time-cur">0:00</span>
+              <div class="seek-track" id="seek-track">
+                <div class="seek-fill" id="seek-fill"></div>
+                <div class="seek-thumb" id="seek-thumb"></div>
+                <div id="chapter-markers"></div>
+              </div>
+              <span class="time time-right" id="time-dur">0:00</span>
+            </div>
+            <div class="btn-row">
+              <button class="ctrl-btn" id="btn-play" title="Play/Pause (Space)">
+                <svg id="icon-play" width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <svg id="icon-pause" width="18" height="18" viewBox="0 0 24 24" fill="white" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              </button>
+              <div class="volume-wrap">
+                <button class="ctrl-btn" id="btn-mute" title="Mute (M)">
+                  <svg id="icon-vol" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                  </svg>
+                  <svg id="icon-mute" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+                  </svg>
+                </button>
+                <input type="range" class="volume-slider" id="vol-slider" min="0" max="1" step="0.02" value="1" />
+              </div>
+              <div class="spacer"></div>
+              <span class="current-chapter" id="current-chapter"></span>
+              <button class="speed-btn" id="btn-speed">1x</button>
+              <button class="ctrl-btn" id="btn-fs" title="Fullscreen (F)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                  <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="chapter-list" id="chapter-list"></div>
+
+      <div class="info-bar">
+        <div class="title-wrap">
+          <div class="title-meta">
+            <div class="video-title" id="vid-title">${escHtml(meta.title)}</div>
+            <div class="video-views" id="vid-views">${meta.views} view${meta.views === 1 ? '' : 's'}</div>
+            ${meta.tags && meta.tags.length
+              ? `<div class="video-tags" id="vid-tags">${meta.tags.map(t => `<span class="tag-chip">${escHtml(t)}</span>`).join('')}</div>`
+              : `<div class="video-tags" id="vid-tags"></div>`}
+          </div>
+          <button class="btn-edit-title" id="btn-edit-title" title="Edit title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="action-btns">
+          <button class="btn btn-outline" id="btn-copy">COPY LINK</button>
+          <button class="btn btn-amber"   id="btn-chapters">CHAPTERS</button>
+          <a      class="btn btn-outline" id="btn-download" href="/dl/${slug}" download>DOWNLOAD</a>
+          <button class="btn btn-danger"  id="btn-delete">DELETE</button>
+        </div>
+      </div>
+    `;
+
+    const vid     = document.getElementById('vid');
+    const vc      = document.getElementById('vc');
+    const loading = document.getElementById('loading');
+    const unmuteBanner = document.getElementById('unmute-banner');
+
+    function hideBanner() { unmuteBanner.classList.add('hidden'); }
+
+    vid.src = `/v/${slug}`;
+
+    vid.addEventListener('canplay',  () => { loading.style.display = 'none'; vid.play().catch(() => {}); }, { once: true });
+    vid.addEventListener('waiting',  () => { loading.style.display = 'flex'; });
+    vid.addEventListener('playing',  () => { loading.style.display = 'none'; });
+
+    // Seek to ?t= after metadata loads
+    if (startTime > 0) {
+      vid.addEventListener('loadedmetadata', () => { vid.currentTime = startTime; }, { once: true });
+    }
+
+    // Play / pause / fullscreen
+    vid.addEventListener('dblclick', () => {
+      if (!document.fullscreenElement) vc.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    });
+    vid.addEventListener('click', togglePlay);
+    document.getElementById('btn-play').addEventListener('click', togglePlay);
+
+    function togglePlay() { if (vid.paused) vid.play(); else vid.pause(); }
+
+    vid.addEventListener('play', () => {
+      vc.classList.remove('paused');
+      document.getElementById('icon-play').style.display  = 'none';
+      document.getElementById('icon-pause').style.display = 'block';
+    });
+
+    vid.addEventListener('pause', () => {
+      vc.classList.add('paused');
+      document.getElementById('icon-play').style.display  = 'block';
+      document.getElementById('icon-pause').style.display = 'none';
+    });
+
+    // Seek bar
+    const seekFill  = document.getElementById('seek-fill');
+    const seekThumb = document.getElementById('seek-thumb');
+    const timeCur   = document.getElementById('time-cur');
+    const timeDur   = document.getElementById('time-dur');
+
+    vid.addEventListener('timeupdate', () => {
+      const pct = vid.duration ? (vid.currentTime / vid.duration) * 100 : 0;
+      seekFill.style.width = pct + '%';
+      seekThumb.style.left = pct + '%';
+      timeCur.textContent  = fmtTime(vid.currentTime);
+    });
+
+    vid.addEventListener('loadedmetadata', () => { timeDur.textContent = fmtTime(vid.duration); });
+
+    const seekTrack = document.getElementById('seek-track');
+    let seeking = false;
+
+    function applySeek(e) {
+      const rect = seekTrack.getBoundingClientRect();
+      const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      vid.currentTime = pct * (vid.duration || 0);
+    }
+
+    seekTrack.addEventListener('mousedown', e => {
+      e.preventDefault();
+      seeking = true;
+      applySeek(e);
+    });
+
+    document.addEventListener('mousemove', e => { if (seeking) applySeek(e); });
+    document.addEventListener('mouseup',   () => { seeking = false; });
+
+    // Volume
+    const volSlider = document.getElementById('vol-slider');
+
+    function updateVolFill() {
+      const pct = (vid.muted || vid.volume === 0) ? 0 : volSlider.value * 100;
+      volSlider.style.background =
+        `linear-gradient(to right, var(--amber) ${pct}%, rgba(255,255,255,0.15) ${pct}%)`;
+    }
+
+    volSlider.addEventListener('input', () => { vid.volume = +volSlider.value; updateVolIcon(); updateVolFill(); });
+    document.getElementById('btn-mute').addEventListener('click', () => { vid.muted = !vid.muted; updateVolIcon(); updateVolFill(); });
+
+    function updateVolIcon() {
+      const muted = vid.muted || vid.volume === 0;
+      document.getElementById('icon-vol').style.display  = muted ? 'none'  : 'block';
+      document.getElementById('icon-mute').style.display = muted ? 'block' : 'none';
+    }
+
+    // Initial state: muted for autoplay, reflect in slider position + icon + fill
+    volSlider.value = 0;
+    updateVolFill();
+    updateVolIcon();
+
+    // Unmute banner
+    unmuteBanner.addEventListener('click', () => {
+      vid.muted = false;
+      volSlider.value = vid.volume || 1;
+      updateVolIcon();
+      updateVolFill();
+      hideBanner();
+    });
+    // Also hide banner if user unmutes via mute button or M key
+    vid.addEventListener('volumechange', () => {
+      if (!vid.muted && vid.volume > 0) hideBanner();
+    });
+
+    // Speed
+    const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    let speedIdx = 2;
+    document.getElementById('btn-speed').addEventListener('click', () => {
+      speedIdx = (speedIdx + 1) % speeds.length;
+      vid.playbackRate = speeds[speedIdx];
+      document.getElementById('btn-speed').textContent = speeds[speedIdx] + 'x';
+    });
+
+    // Fullscreen
+    document.getElementById('btn-fs').addEventListener('click', () => {
+      if (!document.fullscreenElement) vc.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.code === 'Space')      { e.preventDefault(); togglePlay(); }
+      if (e.code === 'ArrowRight') vid.currentTime = Math.min(vid.duration, vid.currentTime + 5);
+      if (e.code === 'ArrowLeft')  vid.currentTime = Math.max(0, vid.currentTime - 5);
+      if (e.code === 'KeyM')       { vid.muted = !vid.muted; updateVolIcon(); }
+      if (e.code === 'KeyF')       document.getElementById('btn-fs').click();
+      if (e.code === 'KeyC')       document.getElementById('btn-chapters').click();
+    });
+
+    // ── Scroll to change volume ────────────────────────
+    vc.addEventListener('wheel', e => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.05 : -0.05;
+      vid.volume = Math.max(0, Math.min(1, vid.volume + delta));
+      if (vid.muted && vid.volume > 0) vid.muted = false;
+      volSlider.value = vid.volume;
+      updateVolIcon();
+      updateVolFill();
+    }, { passive: false });
+
+    // ── Context menu ───────────────────────────────────
+    const ctxMenu = document.getElementById('ctx-menu');
+
+    vc.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      ctxMenu.classList.remove('open');
+      ctxMenu.style.left = '0px';
+      ctxMenu.style.top  = '0px';
+      ctxMenu.classList.add('open');
+      const r  = ctxMenu.getBoundingClientRect();
+      const x  = Math.min(e.clientX, window.innerWidth  - r.width  - 6);
+      const y  = Math.min(e.clientY, window.innerHeight - r.height - 6);
+      ctxMenu.style.left = x + 'px';
+      ctxMenu.style.top  = y + 'px';
+    });
+
+    function closeCtx() { ctxMenu.classList.remove('open'); }
+    document.addEventListener('click',    closeCtx);
+    document.addEventListener('keydown',  e => { if (e.key === 'Escape') closeCtx(); });
+    document.addEventListener('scroll',   closeCtx);
+
+    document.getElementById('ctx-copy').addEventListener('click', () => {
+      navigator.clipboard.writeText(`${location.origin}/${slug}`);
+    });
+
+    document.getElementById('ctx-from-here').addEventListener('click', () => {
+      const t = Math.floor(vid.currentTime);
+      navigator.clipboard.writeText(`${location.origin}/${slug}?t=${t}`);
+    });
+
+    document.getElementById('ctx-add-chapter').addEventListener('click', () => {
+      document.getElementById('btn-chapters').click();
+    });
+
+    document.getElementById('ctx-download').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = `/dl/${slug}`;
+      a.download = '';
+      a.click();
+    });
+
+    // ── Debug info overlay ─────────────────────────────
+    const debugOverlay = document.getElementById('debug-overlay');
+
+    function buildDebugRows() {
+      const sizeMB   = (meta.size / (1024 * 1024)).toFixed(1);
+      const dur      = meta.duration || 0;
+      const bitrateM = dur > 0 ? ((meta.size * 8) / dur / 1_000_000).toFixed(1) : '—';
+      const res      = (meta.width && meta.height) ? `${meta.width}×${meta.height}` : '—';
+      const mime     = (meta.mimeType || '').replace('video/', '');
+      const uploaded = meta.uploadedAt ? new Date(meta.uploadedAt).toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' }) : '—';
+
+      const rows = [
+        ['File',    meta.filename || '—'],
+        ['Format',  mime || '—'],
+        ['Res',     res],
+        ['Size',    sizeMB + ' MB'],
+        ['Bitrate', bitrateM + ' Mbit/s'],
+        ['Dur',     dur ? fmtTime(dur) : '—'],
+        ['Views',   String(meta.views ?? 0)],
+        ['Added',   uploaded],
+      ];
+
+      debugOverlay.innerHTML = rows.map(([k, v]) =>
+        `<div class="debug-row"><span class="debug-key">${k}</span><span class="debug-val">${v}</span></div>`
+      ).join('');
+    }
+
+    document.getElementById('ctx-debug').addEventListener('click', () => {
+      if (debugOverlay.classList.contains('open')) {
+        debugOverlay.classList.remove('open');
+      } else {
+        buildDebugRows();
+        debugOverlay.classList.add('open');
+      }
+    });
+
+    // Close debug overlay on Escape
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') debugOverlay.classList.remove('open');
+    });
+
+    // ── Chapters ───────────────────────────────────────
+    let chapters = (meta.chapters || []).slice().sort((a, b) => a.time - b.time);
+
+    function fmtTime(s) {
+      if (!s || isNaN(s)) return '0:00';
+      const m = Math.floor(s / 60);
+      return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+    }
+
+    function parseTime(s) {
+      const parts = String(s).trim().split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return parseFloat(s) || 0;
+    }
+
+    function renderChapterMarkers() {
+      const container = document.getElementById('chapter-markers');
+      container.innerHTML = '';
+      if (!chapters.length || !vid.duration) return;
+      chapters.forEach(ch => {
+        const pct = (ch.time / vid.duration) * 100;
+        const m   = document.createElement('div');
+        m.className = 'chapter-marker';
+        m.style.left = pct + '%';
+        m.innerHTML  = `<div class="chapter-marker-tick"></div><div class="chapter-marker-label">${escHtml(ch.label)}</div>`;
+        m.addEventListener('click', e => { e.stopPropagation(); vid.currentTime = ch.time; });
+        container.appendChild(m);
+      });
+    }
+
+    function renderChapterList() {
+      const list = document.getElementById('chapter-list');
+      list.innerHTML = '';
+      if (!chapters.length) return;
+      chapters.forEach(ch => {
+        const btn = document.createElement('button');
+        btn.className   = 'chapter-pill';
+        btn.dataset.time = ch.time;
+        btn.innerHTML   = `<span class="chapter-pill-time">${fmtTime(ch.time)}</span>${escHtml(ch.label)}`;
+        btn.addEventListener('click', () => { vid.currentTime = ch.time; vid.play(); });
+        list.appendChild(btn);
+      });
+    }
+
+    function updateCurrentChapter() {
+      const cur  = document.getElementById('current-chapter');
+      const pills = document.querySelectorAll('.chapter-pill');
+      if (!chapters.length) { cur.textContent = ''; return; }
+      let active = null;
+      for (const ch of chapters) { if (vid.currentTime >= ch.time) active = ch; }
+      cur.textContent = active ? active.label : '';
+      pills.forEach(p => {
+        p.classList.toggle('active', active && Number(p.dataset.time) === active.time);
+      });
+    }
+
+    vid.addEventListener('loadedmetadata', () => { renderChapterMarkers(); renderChapterList(); });
+    vid.addEventListener('timeupdate', updateCurrentChapter);
+
+    // Chapters modal
+    const chapModal    = document.getElementById('chapters-modal');
+    const chapToken    = document.getElementById('chapters-token');
+    const chapError    = document.getElementById('chapters-error');
+    const chapSave     = document.getElementById('chapters-save');
+    let   modalChapters = [];
+
+    function renderModalChapters() {
+      const el = document.getElementById('ch-items');
+      if (!modalChapters.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">No chapters yet.</div>'; return; }
+      el.innerHTML = modalChapters.map((ch, i) => `
+        <div class="chapter-item">
+          <span class="ch-item-time" data-idx="${i}">${fmtTime(ch.time)}</span>
+          <span class="ch-item-label">${escHtml(ch.label)}</span>
+          <button class="ch-item-del" data-idx="${i}">×</button>
+        </div>
+      `).join('');
+      el.querySelectorAll('.ch-item-del').forEach(btn => {
+        btn.addEventListener('click', () => { modalChapters.splice(+btn.dataset.idx, 1); renderModalChapters(); });
+      });
+      el.querySelectorAll('.ch-item-time').forEach(span => {
+        span.addEventListener('click', () => { vid.currentTime = modalChapters[+span.dataset.idx].time; });
+      });
+    }
+
+    document.getElementById('btn-chapters').addEventListener('click', () => {
+      modalChapters = chapters.slice();
+      chapError.textContent = '';
+      if (savedPw()) { chapToken.style.display = 'none'; }
+      else { chapToken.style.display = 'block'; chapToken.value = ''; }
+      document.getElementById('ch-time').value  = fmtTime(Math.floor(vid.currentTime));
+      document.getElementById('ch-label').value = '';
+      renderModalChapters();
+      openModal(chapModal, document.getElementById('ch-label'));
+    });
+
+    document.getElementById('btn-ch-add').addEventListener('click', () => {
+      const t     = parseTime(document.getElementById('ch-time').value);
+      const label = document.getElementById('ch-label').value.trim();
+      if (!label) { document.getElementById('ch-label').focus(); return; }
+      modalChapters.push({ time: t, label });
+      modalChapters.sort((a, b) => a.time - b.time);
+      document.getElementById('ch-time').value  = fmtTime(Math.floor(vid.currentTime));
+      document.getElementById('ch-label').value = '';
+      renderModalChapters();
+      document.getElementById('ch-label').focus();
+    });
+
+    document.getElementById('ch-label').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-ch-add').click();
+    });
+
+    document.getElementById('chapters-cancel').addEventListener('click', () => closeModal(chapModal));
+    chapModal.addEventListener('click', e => { if (e.target === chapModal) closeModal(chapModal); });
+
+    chapSave.addEventListener('click', async () => {
+      const token = savedPw() || chapToken.value.trim();
+      if (!token) { chapToken.classList.add('error'); chapError.textContent = 'Password is required.'; return; }
+      chapSave.disabled = true; chapSave.textContent = 'SAVING…';
+      const r = await fetch(`/api/${slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, chapters: modalChapters }),
+      });
+      if (r.ok) {
+        chapters = modalChapters.slice();
+        renderChapterMarkers();
+        renderChapterList();
+        updateCurrentChapter();
+        closeModal(chapModal);
+      } else {
+        const d = await r.json().catch(() => ({}));
+        chapError.textContent = d.error || 'Save failed.';
+      }
+      chapSave.disabled = false; chapSave.textContent = 'SAVE';
+    });
+
+    // ── Copy link ──────────────────────────────────────
+    document.getElementById('btn-copy').addEventListener('click', function () {
+      const url = `${location.origin}/${slug}`;
+      navigator.clipboard.writeText(url).then(() => {
+        flashBtn(this, 'COPIED!', 'success');
+      });
+    });
+
+    function flashBtn(btn, text, cls) {
+      const orig = btn.textContent;
+      const origCls = btn.className;
+      btn.textContent = text;
+      btn.classList.add(cls);
+      setTimeout(() => { btn.textContent = orig; btn.className = origCls; }, 1800);
+    }
+
+    const savedPw = () => sessionStorage.getItem('sp') || '';
+
+    // ── Delete modal ───────────────────────────────────
+    const delModal   = document.getElementById('delete-modal');
+    const delToken   = document.getElementById('del-token');
+    const delSub     = document.getElementById('del-sub');
+    const delError   = document.getElementById('del-error');
+    const delConfirm = document.getElementById('del-confirm');
+
+    document.getElementById('btn-delete').addEventListener('click', () => {
+      delError.textContent = '';
+      delConfirm.disabled = false;
+      delConfirm.textContent = 'DELETE';
+      if (savedPw()) {
+        delToken.style.display = 'none';
+        delSub.style.display = 'block';
+        openModal(delModal, null);
+      } else {
+        delSub.style.display = 'none';
+        delToken.style.display = 'block';
+        delToken.value = '';
+        openModal(delModal, delToken);
+      }
+    });
+
+    document.getElementById('del-cancel').addEventListener('click', () => closeModal(delModal));
+    delToken.addEventListener('keydown', e => { if (e.key === 'Enter') delConfirm.click(); });
+
+    delConfirm.addEventListener('click', async () => {
+      const token = savedPw() || delToken.value.trim();
+      if (!token) { markErr(delToken, delError, 'Password is required.'); return; }
+      delConfirm.disabled = true;
+      delConfirm.textContent = 'DELETING…';
+      const r = await fetch(`/api/${slug}?token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+      if (r.ok) { location.href = '/'; return; }
+      const d = await r.json().catch(() => ({}));
+      markErr(delToken, delError, d.error || 'Delete failed.');
+      delConfirm.disabled = false;
+      delConfirm.textContent = 'DELETE';
+    });
+
+    // ── Edit modal ─────────────────────────────────────
+    const editModal   = document.getElementById('edit-modal');
+    const editTitle   = document.getElementById('edit-title');
+    const editTags    = document.getElementById('edit-tags');
+    const editToken   = document.getElementById('edit-token');
+    const editError   = document.getElementById('edit-error');
+    const editConfirm = document.getElementById('edit-confirm');
+
+    document.getElementById('btn-edit-title').addEventListener('click', () => {
+      editTitle.value = document.getElementById('vid-title').textContent;
+      const chips = document.querySelectorAll('#vid-tags .tag-chip');
+      editTags.value = [...chips].map(c => c.textContent).join(', ');
+      editError.textContent = '';
+      clearErr(editTitle);
+      if (savedPw()) {
+        editToken.style.display = 'none';
+      } else {
+        editToken.style.display = 'block';
+        editToken.value = '';
+        clearErr(editToken);
+      }
+      openModal(editModal, editTitle);
+    });
+
+    document.getElementById('edit-cancel').addEventListener('click', () => closeModal(editModal));
+    editTitle.addEventListener('keydown', e => { if (e.key === 'Enter') editTags.focus(); });
+    editTags.addEventListener('keydown',  e => { if (e.key === 'Enter') editConfirm.click(); });
+    editToken.addEventListener('keydown', e => { if (e.key === 'Enter') editConfirm.click(); });
+
+    editConfirm.addEventListener('click', async () => {
+      const title = editTitle.value.trim();
+      const tags  = editTags.value.split(',').map(t => t.trim()).filter(Boolean);
+      const token = savedPw() || editToken.value.trim();
+      if (!title) { markErr(editTitle, editError, 'Title cannot be empty.'); return; }
+      if (!token) { markErr(editToken, editError, 'Password is required.'); return; }
+
+      editConfirm.disabled = true;
+      editConfirm.textContent = 'SAVING…';
+
+      const r = await fetch(`/api/${slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, title, tags }),
+      });
+
+      if (r.ok) {
+        const d = await r.json();
+        document.getElementById('vid-title').textContent = d.title;
+        document.title = `${d.title} — Streamable`;
+        const tagsEl = document.getElementById('vid-tags');
+        tagsEl.innerHTML = d.tags.map(t => `<span class="tag-chip">${escHtml(t)}</span>`).join('');
+        closeModal(editModal);
+      } else {
+        const d = await r.json().catch(() => ({}));
+        markErr(editToken.style.display !== 'none' ? editToken : editTitle, editError, d.error || 'Wrong password.');
+      }
+
+      editConfirm.disabled = false;
+      editConfirm.textContent = 'SAVE';
+    });
+
+    // ── Modal helpers ──────────────────────────────────
+    function openModal(backdrop, focusEl) {
+      backdrop.classList.add('open');
+      setTimeout(() => focusEl?.focus(), 50);
+    }
+
+    function closeModal(backdrop) { backdrop.classList.remove('open'); }
+
+    function markErr(input, errEl, msg) {
+      input.classList.add('error');
+      errEl.textContent = msg;
+    }
+
+    function clearErr(input) { input.classList.remove('error'); }
+
+    // Close any open modal on Escape / backdrop click
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeModal(delModal);
+        closeModal(editModal);
+      }
+    });
+
+    [delModal, editModal].forEach(m => {
+      m.addEventListener('click', e => { if (e.target === m) closeModal(m); });
+    });
+
+    // ── Helpers ────────────────────────────────────────
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+  })();
+
+  function renderNotFound() {
+    document.getElementById('app').innerHTML = `
+      <div class="not-found">
+        <h2>404</h2>
+        <p>This video doesn't exist or was deleted. <a href="/">Go back</a></p>
+      </div>
+    `;
+  }
+  </script>
+</body>
+</html>
