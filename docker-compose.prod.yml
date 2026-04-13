@@ -10,6 +10,7 @@ services:
     restart: unless-stopped
     environment:
       - PORT=3000
+      - PASSWORD=${PASSWORD}
 
 volumes:
   uploads:
