@@ -1,6 +1,6 @@
 services:
   streamable:
-    build: .
+    image: ${REGISTRY}/streamable:${IMAGE_TAG:-latest}
     ports:
       - "${PORT:-3000}:3000"
     volumes:

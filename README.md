@@ -36,27 +36,42 @@ Open [http://localhost:3000](http://localhost:3000) and enter your upload passwo
 
 ## Environment Variables
 
-| Variable          | Default  | Description                                      |
-|-------------------|----------|--------------------------------------------------|
-| `PASSWORD`        | —        | Required. Protects upload, delete, and edit.     |
-| `PORT`            | `3000`   | Port the server listens on.                      |
-| `REGISTRY`        | —        | Docker registry hostname used by `build.sh`.     |
-| `IMAGE_TAG`       | `latest` | Image tag pulled on the server.                  |
+| Variable    | Default  | Description                                  |
+|-------------|----------|----------------------------------------------|
+| `PASSWORD`  | —        | Required. Protects upload, delete, and edit. |
+| `PORT`      | `3000`   | Port the server listens on.                  |
+| `REGISTRY`  | —        | Docker registry hostname (used by `build.sh` only). |
+| `IMAGE_TAG` | `latest` | Image tag to pull (used by `docker-compose.prod.yml` only). |
 
 ## Docker Deployment
 
-**On your build machine:**
+### Option 1 — Clone and run (recommended for self-hosting)
+
+No registry needed. Docker builds the image locally.
 
 ```bash
-./build.sh          # builds linux/amd64, tags as :latest, pushes
-./build.sh 1.2.3    # also tags as :1.2.3
+git clone https://github.com/your-username/streamable
+cd streamable
+cp .env.example .env   # set PASSWORD
+docker compose up -d
 ```
 
-**On the server — only needs `docker-compose.yml` and `.env`:**
+### Option 2 — Private registry
+
+For those who maintain a private registry and deploy to a remote server.
+
+**Build and push:**
 
 ```bash
-docker compose pull
-docker compose up -d
+./build.sh          # builds linux/amd64, tags :latest, pushes
+./build.sh 1.2.3    # also tags :1.2.3
+```
+
+**On the server — only needs `docker-compose.prod.yml` and `.env`:**
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 Data is persisted in three named volumes: `uploads`, `thumbnails`, `data`.
