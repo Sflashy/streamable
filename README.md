@@ -36,12 +36,13 @@ Open [http://localhost:3000](http://localhost:3000) and enter your upload passwo
 
 ## Environment Variables
 
-| Variable    | Default  | Description                                  |
-|-------------|----------|----------------------------------------------|
-| `PASSWORD`  | —        | Required. Protects upload, delete, and edit. |
-| `PORT`      | `3000`   | Port the server listens on.                  |
-| `REGISTRY`  | —        | Docker registry hostname (used by `build.sh` only). |
-| `IMAGE_TAG` | `latest` | Image tag to pull (used by `docker-compose.prod.yml` only). |
+| Variable        | Default  | Description                                  |
+|-----------------|----------|----------------------------------------------|
+| `PASSWORD`      | —        | Required. Protects upload, delete, and edit. |
+| `PORT`          | `3000`   | Port the server listens on.                  |
+| `MAX_UPLOAD_MB` | `1024`   | Max upload size in megabytes.                |
+| `REGISTRY`      | —        | Docker registry hostname (used by `build.sh` only). |
+| `IMAGE_TAG`     | `latest` | Image tag to pull (used by `docker-compose.prod.yml` only). |
 
 ## Docker Deployment
 

@@ -17,7 +17,8 @@ const DATA_DIR    = path.join(__dirname, 'data');
 const DATA_FILE   = path.join(DATA_DIR, 'videos.json');
 const PUBLIC_DIR  = path.join(__dirname, 'public');
 
-const UPLOAD_LIMIT    = 1 * 1024 * 1024 * 1024; // 1 GB
+const UPLOAD_LIMIT_MB = parseInt(process.env.MAX_UPLOAD_MB || '1024', 10);
+const UPLOAD_LIMIT    = UPLOAD_LIMIT_MB * 1024 * 1024;
 const PASSWORD = process.env.PASSWORD || '';
 
 function checkPassword(provided) {
@@ -143,7 +144,7 @@ app.post('/upload', (req, res) => {
       stream.resume();
       try { await fsp.unlink(destPath); } catch {}
       if (!res.headersSent)
-        res.status(413).json({ error: 'File exceeds the 1 GB upload limit.' });
+        res.status(413).json({ error: `File exceeds the ${UPLOAD_LIMIT_MB} MB upload limit.` });
     });
 
     const writeStream = fs.createWriteStream(destPath);

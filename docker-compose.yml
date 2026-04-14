@@ -11,6 +11,7 @@ services:
     environment:
       - PORT=3000
       - PASSWORD=${PASSWORD}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-1024}
 
 volumes:
   uploads:

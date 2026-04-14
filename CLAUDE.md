@@ -16,6 +16,7 @@ No build step, no test suite, no linter configured.
 Copy `.env.example` to `.env` before running. Required variables:
 
 - `PASSWORD` — protects upload, delete, and edit operations
+- `MAX_UPLOAD_MB` — max upload size in megabytes (default 1024)
 - `REGISTRY` — Docker registry hostname for `build.sh`
 - `PORT` — host port (default 3000)
 - `IMAGE_TAG` — image tag pulled on server (default latest)
