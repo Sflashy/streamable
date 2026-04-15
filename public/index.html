@@ -210,6 +210,17 @@
       transition: width 0.15s ease;
     }
 
+    .progress-bar-fill.processing {
+      width: 100% !important;
+      transition: none;
+      animation: progress-pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes progress-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+
     .progress-label {
       font-family: 'Space Mono', monospace;
       font-size: 11px;
@@ -1216,6 +1227,23 @@
       const fd = new FormData();
       fd.append('video', file);
 
+      const uploadId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+      const es = new EventSource('/api/upload-events/' + uploadId);
+      const phaseLabels = {
+        analyzing:   'Analyzing…',
+        remuxing:    'Remuxing…',
+        transcoding: 'Transcoding…',
+        finishing:   'Finishing…',
+      };
+      es.onmessage = (e) => {
+        const { phase } = JSON.parse(e.data);
+        if (phaseLabels[phase]) {
+          progressFill.classList.add('processing');
+          progressPct.textContent = phaseLabels[phase];
+          progressSpeed.textContent = '';
+        }
+      };
+
       const xhr = new XMLHttpRequest();
       let startTime = Date.now();
 
@@ -1230,9 +1258,21 @@
         progressSpeed.textContent = formatBytes(speed) + '/s';
       });
 
-      xhr.addEventListener('load', () => {
+      xhr.upload.addEventListener('load', () => {
+        progressFill.classList.add('processing');
+        progressPct.textContent = 'Processing…';
+        progressSpeed.textContent = '';
+      });
+
+      function finishUpload() {
+        es.close();
+        progressFill.classList.remove('processing');
         progressWrap.classList.remove('visible');
         progressWrap.style.display = 'none';
+      }
+
+      xhr.addEventListener('load', () => {
+        finishUpload();
         if (xhr.status === 200) {
           const data = JSON.parse(xhr.responseText);
           const fullUrl = location.origin + data.url;
@@ -1240,7 +1280,6 @@
           resultUrl.textContent = fullUrl;
           result.style.display = 'block';
           result.classList.add('visible');
-          // Reset file input
           fileInput.value = '';
           loadVideos();
         } else {
@@ -1252,14 +1291,15 @@
       });
 
       xhr.addEventListener('error', () => {
-        progressWrap.classList.remove('visible');
-        progressWrap.style.display = 'none';
+        finishUpload();
         showError('Network error during upload.');
       });
 
       xhr.open('POST', '/upload');
       xhr.setRequestHeader('x-password', getPassword());
+      xhr.setRequestHeader('x-upload-id', uploadId);
       progressFill.style.width = '0%';
+      progressFill.classList.remove('processing');
       progressPct.textContent = '0%';
       progressSpeed.textContent = '';
       progressWrap.style.display = 'block';

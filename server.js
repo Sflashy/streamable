@@ -21,6 +21,13 @@ const UPLOAD_LIMIT_MB = parseInt(process.env.MAX_UPLOAD_MB || '1024', 10);
 const UPLOAD_LIMIT    = UPLOAD_LIMIT_MB * 1024 * 1024;
 const PASSWORD = process.env.PASSWORD || '';
 
+const uploadEvents = new Map(); // uploadId → SSE res
+
+function sendUploadEvent(id, data) {
+  const res = uploadEvents.get(id);
+  if (res) res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
 function checkPassword(provided) {
   return PASSWORD !== '' && provided === PASSWORD;
 }
@@ -122,6 +129,16 @@ function genToken(bytes = 8) { return crypto.randomBytes(bytes).toString('hex');
 app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
+// ── GET /api/upload-events/:id — SSE stream for upload progress ───────────────
+app.get('/api/upload-events/:id', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  uploadEvents.set(req.params.id, res);
+  req.on('close', () => uploadEvents.delete(req.params.id));
+});
+
 // ── POST /api/auth ────────────────────────────────────────────────────────────
 app.post('/api/auth', (req, res) => {
   const { password } = req.body;
@@ -135,6 +152,7 @@ app.post('/upload', (req, res) => {
     return res.status(401).json({ error: 'Wrong password.' });
   }
 
+  const uploadId = req.headers['x-upload-id'] || null;
   const bb = busboy({ headers: req.headers, limits: { fileSize: UPLOAD_LIMIT } });
   let fileStarted = false;
   let fileError   = null;
@@ -172,13 +190,16 @@ app.post('/upload', (req, res) => {
       if (limitHit) return;
 
       // Probe codec first so we know whether to transcode
+      sendUploadEvent(uploadId, { phase: 'analyzing' });
       const probe = await probeVideo(destPath);
 
       // Normalize to H.264 MP4: remux-only if already H.264, full transcode otherwise
       const normalizedPath = path.join(UPLOADS_DIR, `${slug}_norm.mp4`);
-      const normOk = probe.videoCodec
-        ? await normalizeToH264(destPath, normalizedPath, probe.videoCodec)
-        : false;
+      let normOk = false;
+      if (probe.videoCodec) {
+        sendUploadEvent(uploadId, { phase: probe.videoCodec === 'h264' ? 'remuxing' : 'transcoding' });
+        normOk = await normalizeToH264(destPath, normalizedPath, probe.videoCodec);
+      }
 
       let finalPath       = destPath;
       let finalStoredName = storedName;
@@ -192,6 +213,7 @@ app.post('/upload', (req, res) => {
         await fsp.rename(normalizedPath, finalPath);
       }
 
+      sendUploadEvent(uploadId, { phase: 'finishing' });
       const thumbPath = path.join(THUMBS_DIR, `${slug}.jpg`);
       const [hasThumbnail, stat, videos] = await Promise.all([
         generateThumbnail(finalPath, thumbPath),
@@ -224,6 +246,7 @@ app.post('/upload', (req, res) => {
       videos.unshift(meta);
       await writeVideos(videos);
 
+      uploadEvents.delete(uploadId);
       res.json({ slug, url: `/${slug}`, deleteUrl: `/api/${slug}?token=${token}` });
     });
 
