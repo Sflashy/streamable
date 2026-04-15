@@ -32,7 +32,7 @@ npm run dev            # development (auto-restart)
 npm start              # production
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and enter your upload password.
+Open [http://localhost:3000](http://localhost:3000) and enter your password.
 
 ## Environment Variables
 
