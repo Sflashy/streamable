@@ -3,5 +3,5 @@ uploads/
 thumbnails/
 data/
 .env
-.env
 *.log
+.claude/
