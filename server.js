@@ -21,13 +21,6 @@ const UPLOAD_LIMIT_MB = parseInt(process.env.MAX_UPLOAD_MB || '1024', 10);
 const UPLOAD_LIMIT    = UPLOAD_LIMIT_MB * 1024 * 1024;
 const PASSWORD = process.env.PASSWORD || '';
 
-const uploadEvents = new Map(); // uploadId → SSE res
-
-function sendUploadEvent(id, data) {
-  const res = uploadEvents.get(id);
-  if (res) res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
 function checkPassword(provided) {
   return PASSWORD !== '' && provided === PASSWORD;
 }
@@ -63,37 +56,6 @@ function generateThumbnail(inputPath, outputPath) {
   });
 }
 
-function transcodeToWebM(inputPath, outputPath) {
-  return new Promise((resolve) => {
-    const ff = spawn('ffmpeg', [
-      '-i', inputPath,
-      '-map', '0:v:0',
-      '-map', '0:a:0?',
-      '-c:v', 'libvpx-vp9', '-crf', '33', '-b:v', '0', '-cpu-used', '4', '-row-mt', '1',
-      '-c:a', 'libopus', '-b:a', '128k',
-      '-y', outputPath,
-    ]);
-    ff.on('close', (code) => resolve(code === 0));
-    ff.on('error', () => resolve(false));
-  });
-}
-
-function normalizeToH264(inputPath, outputPath) {
-  return new Promise((resolve) => {
-    const ff = spawn('ffmpeg', [
-      '-i', inputPath,
-      '-map', '0:v:0',
-      '-map', '0:a:0?',
-      '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-ar', '48000', '-b:a', '192k',
-      '-movflags', '+faststart',
-      '-y', outputPath,
-    ]);
-    ff.on('close', (code) => resolve(code === 0));
-    ff.on('error', () => resolve(false));
-  });
-}
-
 function probeVideo(inputPath) {
   return new Promise((resolve) => {
     const ff = spawn('ffprobe', [
@@ -108,10 +70,9 @@ function probeVideo(inputPath) {
         const data = JSON.parse(out);
         const vs   = data.streams?.find(s => s.codec_type === 'video');
         resolve({
-          duration:   Math.round(parseFloat(data.format?.duration) || 0),
-          width:      vs?.width      || 0,
-          height:     vs?.height     || 0,
-          videoCodec: vs?.codec_name || null,
+          duration: Math.round(parseFloat(data.format?.duration) || 0),
+          width:    vs?.width  || 0,
+          height:   vs?.height || 0,
         });
       } catch { resolve({}); }
     });
@@ -143,16 +104,6 @@ function genToken(bytes = 8) { return crypto.randomBytes(bytes).toString('hex');
 app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
-// ── GET /api/upload-events/:id — SSE stream for upload progress ───────────────
-app.get('/api/upload-events/:id', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  uploadEvents.set(req.params.id, res);
-  req.on('close', () => uploadEvents.delete(req.params.id));
-});
-
 // ── POST /api/auth ────────────────────────────────────────────────────────────
 app.post('/api/auth', (req, res) => {
   const { password } = req.body;
@@ -166,7 +117,6 @@ app.post('/upload', (req, res) => {
     return res.status(401).json({ error: 'Wrong password.' });
   }
 
-  const uploadId = req.headers['x-upload-id'] || null;
   const bb = busboy({ headers: req.headers, limits: { fileSize: UPLOAD_LIMIT } });
   let fileStarted = false;
   let fileError   = null;
@@ -203,35 +153,13 @@ app.post('/upload', (req, res) => {
     writeStream.on('finish', async () => {
       if (limitHit) return;
 
-      // Probe codec first so we know whether to transcode
-      sendUploadEvent(uploadId, { phase: 'analyzing' });
-      const probe = await probeVideo(destPath);
+      const stat = await fsp.stat(destPath);
 
-      // Normalize to H.264 MP4: remux-only if already H.264, full transcode otherwise
-      const normalizedPath = path.join(UPLOADS_DIR, `${slug}_norm.mp4`);
-      let normOk = false;
-      if (probe.videoCodec) {
-        sendUploadEvent(uploadId, { phase: 'transcoding' });
-        normOk = await normalizeToH264(destPath, normalizedPath);
-      }
-
-      let finalPath       = destPath;
-      let finalStoredName = storedName;
-      let finalMimeType   = mimeType;
-
-      if (normOk) {
-        await fsp.unlink(destPath).catch(() => {});
-        finalPath       = path.join(UPLOADS_DIR, `${slug}.mp4`);
-        finalStoredName = `${slug}.mp4`;
-        finalMimeType   = 'video/mp4';
-        await fsp.rename(normalizedPath, finalPath);
-      }
-
-      sendUploadEvent(uploadId, { phase: 'finishing' });
+      // Run thumbnail generation, video probe, and existing video list in parallel
       const thumbPath = path.join(THUMBS_DIR, `${slug}.jpg`);
-      const [hasThumbnail, stat, videos] = await Promise.all([
-        generateThumbnail(finalPath, thumbPath),
-        fsp.stat(finalPath),
+      const [hasThumbnail, probe, videos] = await Promise.all([
+        generateThumbnail(destPath, thumbPath),
+        probeVideo(destPath),
         readVideos(),
       ]);
 
@@ -243,9 +171,9 @@ app.post('/upload', (req, res) => {
         token,
         filename:     baseName,
         title:        baseName,
-        storedName:   finalStoredName,
+        storedName,
         size:         stat.size,
-        mimeType:     finalMimeType,
+        mimeType,
         hasThumbnail,
         duration:     probe.duration || 0,
         width:        probe.width    || 0,
@@ -253,7 +181,6 @@ app.post('/upload', (req, res) => {
         tags:         matchTagsFromFilename(baseName, existingTags),
         chapters:     [],
         private:      false,
-        hasWebM:      false,
         views:        0,
         uploadedAt:   new Date().toISOString(),
       };
@@ -261,19 +188,7 @@ app.post('/upload', (req, res) => {
       videos.unshift(meta);
       await writeVideos(videos);
 
-      uploadEvents.delete(uploadId);
       res.json({ slug, url: `/${slug}`, deleteUrl: `/api/${slug}?token=${token}` });
-
-      // Background WebM encoding — runs after response is sent
-      const webmPath = path.join(UPLOADS_DIR, `${slug}.webm`);
-      transcodeToWebM(finalPath, webmPath).then(async (ok) => {
-        if (!ok) return;
-        try {
-          const vids = await readVideos();
-          const v = vids.find(x => x.slug === slug);
-          if (v) { v.hasWebM = true; await writeVideos(vids); }
-        } catch {}
-      }).catch(() => {});
     });
 
     writeStream.on('error', (err) => {
@@ -316,21 +231,20 @@ app.get('/api/videos', async (req, res) => {
     const authed = checkPassword(req.headers['x-password']);
     const visible = authed ? videos : videos.filter(v => !v.private);
     res.json(visible.map(({ slug, filename, title, size, mimeType,
-                            hasThumbnail, hasWebM, duration, width, height, tags, chapters, private: priv, views, uploadedAt }) => ({
+                            hasThumbnail, duration, width, height, tags, chapters, private: priv, views, uploadedAt }) => ({
       slug,
       filename,
       title: title || filename,
       size,
       mimeType,
       hasThumbnail,
-      hasWebM:   hasWebM   || false,
-      duration:  duration  || 0,
-      width:     width     || 0,
-      height:    height    || 0,
+      duration:  duration || 0,
+      width:     width    || 0,
+      height:    height   || 0,
       tags:      tags      || [],
       chapters:  chapters  || [],
       private:   priv      || false,
-      views:     views     || 0,
+      views:     views    || 0,
       uploadedAt,
     })));
   } catch {
@@ -400,11 +314,9 @@ app.delete('/api/:slug', async (req, res) => {
 
     const filePath  = path.join(UPLOADS_DIR, video.storedName);
     const thumbPath = path.join(THUMBS_DIR, `${slug}.jpg`);
-    const webmPath  = path.join(UPLOADS_DIR, `${slug}.webm`);
     await Promise.all([
       fsp.unlink(filePath).catch(() => {}),
       fsp.unlink(thumbPath).catch(() => {}),
-      fsp.unlink(webmPath).catch(() => {}),
     ]);
 
     videos.splice(idx, 1);
@@ -450,18 +362,14 @@ app.get('/dl/:slug', async (req, res) => {
 
 // ── GET /v/:slug — stream with Range support ──────────────────────────────────
 app.get('/v/:slug', async (req, res) => {
-  const raw     = req.params.slug;
-  const isWebm  = raw.endsWith('.webm');
-  const slug    = isWebm ? raw.slice(0, -5) : raw;
+  const { slug } = req.params;
 
   try {
     const videos = await readVideos();
     const video  = videos.find(v => v.slug === slug);
     if (!video) return res.status(404).json({ error: 'Video not found.' });
 
-    const fileName   = isWebm ? `${slug}.webm` : video.storedName;
-    const mimeType   = isWebm ? 'video/webm'   : (video.mimeType || 'video/mp4');
-    const filePath   = path.join(UPLOADS_DIR, fileName);
+    const filePath = path.join(UPLOADS_DIR, video.storedName);
     let stat;
     try { stat = await fsp.stat(filePath); }
     catch { return res.status(404).json({ error: 'File missing.' }); }
@@ -479,13 +387,13 @@ app.get('/v/:slug', async (req, res) => {
         'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges':  'bytes',
         'Content-Length': chunkSize,
-        'Content-Type':   mimeType,
+        'Content-Type':   video.mimeType || 'video/mp4',
       });
       fs.createReadStream(filePath, { start, end, highWaterMark: 512 * 1024 }).pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type':   mimeType,
+        'Content-Type':   video.mimeType || 'video/mp4',
         'Accept-Ranges':  'bytes',
       });
       fs.createReadStream(filePath, { highWaterMark: 512 * 1024 }).pipe(res);
