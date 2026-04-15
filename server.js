@@ -218,7 +218,7 @@ app.get('/api/stats', async (_, res) => {
     const videos     = await readVideos();
     const totalSize  = videos.reduce((s, v) => s + (v.size || 0), 0);
     const totalViews = videos.reduce((s, v) => s + (v.views || 0), 0);
-    res.json({ count: videos.length, totalSize, totalViews });
+    res.json({ count: videos.length, totalSize, totalViews, maxUploadMb: UPLOAD_LIMIT_MB });
   } catch {
     res.status(500).json({ error: 'Failed.' });
   }

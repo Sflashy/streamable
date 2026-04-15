@@ -1134,6 +1134,8 @@
 
     function getPassword() { return sessionStorage.getItem('sp') || ''; }
 
+    let maxUploadMb = 1024; // overwritten by /api/stats on load
+
     if (getPassword()) {
       gate.classList.add('hidden');
     }
@@ -1206,8 +1208,8 @@
         return;
       }
 
-      if (file.size > 1 * 1024 * 1024 * 1024) {
-        showError('File exceeds the 1 GB upload limit.');
+      if (file.size > maxUploadMb * 1024 * 1024) {
+        showError(`File exceeds the ${maxUploadMb} MB upload limit.`);
         return;
       }
 
@@ -1466,6 +1468,7 @@
         renderGrid();
 
         const stats    = await statsRes.json();
+        if (stats.maxUploadMb) maxUploadMb = stats.maxUploadMb;
         const statsEl  = document.getElementById('header-stats');
         if (statsEl && stats.count !== undefined) {
           statsEl.innerHTML =
