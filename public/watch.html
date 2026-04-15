@@ -1097,7 +1097,17 @@
 
     function hideBanner() { unmuteBanner.classList.add('hidden'); }
 
-    vid.src = `/v/${slug}`;
+    if (meta.hasWebM) {
+      const s = document.createElement('source');
+      s.src  = `/v/${slug}.webm`;
+      s.type = 'video/webm; codecs="vp9, opus"';
+      vid.appendChild(s);
+    }
+    const s2 = document.createElement('source');
+    s2.src  = `/v/${slug}`;
+    s2.type = 'video/mp4';
+    vid.appendChild(s2);
+    vid.load();
 
     vid.addEventListener('canplay',  () => { loading.style.display = 'none'; vid.play().catch(() => {}); }, { once: true });
     vid.addEventListener('waiting',  () => { loading.style.display = 'flex'; });

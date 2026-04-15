@@ -63,6 +63,21 @@ function generateThumbnail(inputPath, outputPath) {
   });
 }
 
+function transcodeToWebM(inputPath, outputPath) {
+  return new Promise((resolve) => {
+    const ff = spawn('ffmpeg', [
+      '-i', inputPath,
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-c:v', 'libvpx-vp9', '-crf', '33', '-b:v', '0', '-cpu-used', '4', '-row-mt', '1',
+      '-c:a', 'libopus', '-b:a', '128k',
+      '-y', outputPath,
+    ]);
+    ff.on('close', (code) => resolve(code === 0));
+    ff.on('error', () => resolve(false));
+  });
+}
+
 function normalizeToH264(inputPath, outputPath) {
   return new Promise((resolve) => {
     const ff = spawn('ffmpeg', [
@@ -238,6 +253,7 @@ app.post('/upload', (req, res) => {
         tags:         matchTagsFromFilename(baseName, existingTags),
         chapters:     [],
         private:      false,
+        hasWebM:      false,
         views:        0,
         uploadedAt:   new Date().toISOString(),
       };
@@ -247,6 +263,17 @@ app.post('/upload', (req, res) => {
 
       uploadEvents.delete(uploadId);
       res.json({ slug, url: `/${slug}`, deleteUrl: `/api/${slug}?token=${token}` });
+
+      // Background WebM encoding — runs after response is sent
+      const webmPath = path.join(UPLOADS_DIR, `${slug}.webm`);
+      transcodeToWebM(finalPath, webmPath).then(async (ok) => {
+        if (!ok) return;
+        try {
+          const vids = await readVideos();
+          const v = vids.find(x => x.slug === slug);
+          if (v) { v.hasWebM = true; await writeVideos(vids); }
+        } catch {}
+      }).catch(() => {});
     });
 
     writeStream.on('error', (err) => {
@@ -289,20 +316,21 @@ app.get('/api/videos', async (req, res) => {
     const authed = checkPassword(req.headers['x-password']);
     const visible = authed ? videos : videos.filter(v => !v.private);
     res.json(visible.map(({ slug, filename, title, size, mimeType,
-                            hasThumbnail, duration, width, height, tags, chapters, private: priv, views, uploadedAt }) => ({
+                            hasThumbnail, hasWebM, duration, width, height, tags, chapters, private: priv, views, uploadedAt }) => ({
       slug,
       filename,
       title: title || filename,
       size,
       mimeType,
       hasThumbnail,
-      duration:  duration || 0,
-      width:     width    || 0,
-      height:    height   || 0,
+      hasWebM:   hasWebM   || false,
+      duration:  duration  || 0,
+      width:     width     || 0,
+      height:    height    || 0,
       tags:      tags      || [],
       chapters:  chapters  || [],
       private:   priv      || false,
-      views:     views    || 0,
+      views:     views     || 0,
       uploadedAt,
     })));
   } catch {
@@ -372,9 +400,11 @@ app.delete('/api/:slug', async (req, res) => {
 
     const filePath  = path.join(UPLOADS_DIR, video.storedName);
     const thumbPath = path.join(THUMBS_DIR, `${slug}.jpg`);
+    const webmPath  = path.join(UPLOADS_DIR, `${slug}.webm`);
     await Promise.all([
       fsp.unlink(filePath).catch(() => {}),
       fsp.unlink(thumbPath).catch(() => {}),
+      fsp.unlink(webmPath).catch(() => {}),
     ]);
 
     videos.splice(idx, 1);
@@ -420,14 +450,18 @@ app.get('/dl/:slug', async (req, res) => {
 
 // ── GET /v/:slug — stream with Range support ──────────────────────────────────
 app.get('/v/:slug', async (req, res) => {
-  const { slug } = req.params;
+  const raw     = req.params.slug;
+  const isWebm  = raw.endsWith('.webm');
+  const slug    = isWebm ? raw.slice(0, -5) : raw;
 
   try {
     const videos = await readVideos();
     const video  = videos.find(v => v.slug === slug);
     if (!video) return res.status(404).json({ error: 'Video not found.' });
 
-    const filePath = path.join(UPLOADS_DIR, video.storedName);
+    const fileName   = isWebm ? `${slug}.webm` : video.storedName;
+    const mimeType   = isWebm ? 'video/webm'   : (video.mimeType || 'video/mp4');
+    const filePath   = path.join(UPLOADS_DIR, fileName);
     let stat;
     try { stat = await fsp.stat(filePath); }
     catch { return res.status(404).json({ error: 'File missing.' }); }
@@ -445,13 +479,13 @@ app.get('/v/:slug', async (req, res) => {
         'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges':  'bytes',
         'Content-Length': chunkSize,
-        'Content-Type':   video.mimeType || 'video/mp4',
+        'Content-Type':   mimeType,
       });
       fs.createReadStream(filePath, { start, end, highWaterMark: 512 * 1024 }).pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type':   video.mimeType || 'video/mp4',
+        'Content-Type':   mimeType,
         'Accept-Ranges':  'bytes',
       });
       fs.createReadStream(filePath, { highWaterMark: 512 * 1024 }).pipe(res);
