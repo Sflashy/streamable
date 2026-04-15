@@ -1002,7 +1002,7 @@
 
     app.innerHTML = `
       <section class="player-section">
-        <div class="video-container paused" id="vc">
+        <div class="video-container" id="vc">
           <div class="loading-overlay" id="loading"><div class="spinner"></div></div>
           <video id="vid" preload="auto" muted ${meta.hasThumbnail ? `poster="/thumb/${slug}"` : ''}></video>
           <div class="debug-overlay" id="debug-overlay"></div>
