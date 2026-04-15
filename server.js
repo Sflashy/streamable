@@ -56,6 +56,23 @@ function generateThumbnail(inputPath, outputPath) {
   });
 }
 
+function normalizeToH264(inputPath, outputPath, videoCodec) {
+  return new Promise((resolve) => {
+    const videoArgs = videoCodec === 'h264'
+      ? ['-c:v', 'copy']
+      : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23'];
+    const ff = spawn('ffmpeg', [
+      '-i', inputPath,
+      ...videoArgs,
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      '-y', outputPath,
+    ]);
+    ff.on('close', (code) => resolve(code === 0));
+    ff.on('error', () => resolve(false));
+  });
+}
+
 function probeVideo(inputPath) {
   return new Promise((resolve) => {
     const ff = spawn('ffprobe', [
@@ -70,9 +87,10 @@ function probeVideo(inputPath) {
         const data = JSON.parse(out);
         const vs   = data.streams?.find(s => s.codec_type === 'video');
         resolve({
-          duration: Math.round(parseFloat(data.format?.duration) || 0),
-          width:    vs?.width  || 0,
-          height:   vs?.height || 0,
+          duration:   Math.round(parseFloat(data.format?.duration) || 0),
+          width:      vs?.width      || 0,
+          height:     vs?.height     || 0,
+          videoCodec: vs?.codec_name || null,
         });
       } catch { resolve({}); }
     });
@@ -153,13 +171,31 @@ app.post('/upload', (req, res) => {
     writeStream.on('finish', async () => {
       if (limitHit) return;
 
-      const stat = await fsp.stat(destPath);
+      // Probe codec first so we know whether to transcode
+      const probe = await probeVideo(destPath);
 
-      // Run thumbnail generation, video probe, and existing video list in parallel
+      // Normalize to H.264 MP4: remux-only if already H.264, full transcode otherwise
+      const normalizedPath = path.join(UPLOADS_DIR, `${slug}_norm.mp4`);
+      const normOk = probe.videoCodec
+        ? await normalizeToH264(destPath, normalizedPath, probe.videoCodec)
+        : false;
+
+      let finalPath       = destPath;
+      let finalStoredName = storedName;
+      let finalMimeType   = mimeType;
+
+      if (normOk) {
+        await fsp.unlink(destPath).catch(() => {});
+        finalPath       = path.join(UPLOADS_DIR, `${slug}.mp4`);
+        finalStoredName = `${slug}.mp4`;
+        finalMimeType   = 'video/mp4';
+        await fsp.rename(normalizedPath, finalPath);
+      }
+
       const thumbPath = path.join(THUMBS_DIR, `${slug}.jpg`);
-      const [hasThumbnail, probe, videos] = await Promise.all([
-        generateThumbnail(destPath, thumbPath),
-        probeVideo(destPath),
+      const [hasThumbnail, stat, videos] = await Promise.all([
+        generateThumbnail(finalPath, thumbPath),
+        fsp.stat(finalPath),
         readVideos(),
       ]);
 
@@ -171,9 +207,9 @@ app.post('/upload', (req, res) => {
         token,
         filename:     baseName,
         title:        baseName,
-        storedName,
+        storedName:   finalStoredName,
         size:         stat.size,
-        mimeType,
+        mimeType:     finalMimeType,
         hasThumbnail,
         duration:     probe.duration || 0,
         width:        probe.width    || 0,
