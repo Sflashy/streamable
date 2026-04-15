@@ -1062,7 +1062,7 @@
           </svg>
         </div>
         <p class="drop-title">Drop a video here</p>
-        <p class="drop-sub">or <span>browse files</span> &mdash; any video format accepted</p>
+        <p class="drop-sub">or <span>browse files</span> &mdash; any video format accepted &middot; max <span id="drop-limit">1024 MB</span></p>
       </div>
 
       <!-- Progress -->
@@ -1468,7 +1468,11 @@
         renderGrid();
 
         const stats    = await statsRes.json();
-        if (stats.maxUploadMb) maxUploadMb = stats.maxUploadMb;
+        if (stats.maxUploadMb) {
+          maxUploadMb = stats.maxUploadMb;
+          const limitEl = document.getElementById('drop-limit');
+          if (limitEl) limitEl.textContent = maxUploadMb + ' MB';
+        }
         const statsEl  = document.getElementById('header-stats');
         if (statsEl && stats.count !== undefined) {
           statsEl.innerHTML =
