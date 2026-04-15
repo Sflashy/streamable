@@ -51,7 +51,7 @@ Open [http://localhost:3000](http://localhost:3000) and enter your password.
 No registry needed. Docker builds the image locally.
 
 ```bash
-git clone https://github.com/your-username/streamable
+git clone https://github.com/Sflashy/streamable
 cd streamable
 cp .env.example .env   # set PASSWORD
 docker compose up -d
