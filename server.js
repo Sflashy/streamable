@@ -63,16 +63,11 @@ function generateThumbnail(inputPath, outputPath) {
   });
 }
 
-function normalizeToH264(inputPath, outputPath, videoCodec, pixFmt) {
-  // Only stream-copy if already 8-bit H.264 — anything else needs a real encode
-  const canCopy = videoCodec === 'h264' && pixFmt === 'yuv420p';
+function normalizeToH264(inputPath, outputPath) {
   return new Promise((resolve) => {
-    const videoArgs = canCopy
-      ? ['-c:v', 'copy']
-      : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p'];
     const ff = spawn('ffmpeg', [
       '-i', inputPath,
-      ...videoArgs,
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac',
       '-movflags', '+faststart',
       '-y', outputPath,
@@ -100,7 +95,6 @@ function probeVideo(inputPath) {
           width:      vs?.width      || 0,
           height:     vs?.height     || 0,
           videoCodec: vs?.codec_name || null,
-          pixFmt:     vs?.pix_fmt    || null,
         });
       } catch { resolve({}); }
     });
@@ -200,9 +194,8 @@ app.post('/upload', (req, res) => {
       const normalizedPath = path.join(UPLOADS_DIR, `${slug}_norm.mp4`);
       let normOk = false;
       if (probe.videoCodec) {
-        const canCopy = probe.videoCodec === 'h264' && probe.pixFmt === 'yuv420p';
-        sendUploadEvent(uploadId, { phase: canCopy ? 'remuxing' : 'transcoding' });
-        normOk = await normalizeToH264(destPath, normalizedPath, probe.videoCodec, probe.pixFmt);
+        sendUploadEvent(uploadId, { phase: 'transcoding' });
+        normOk = await normalizeToH264(destPath, normalizedPath);
       }
 
       let finalPath       = destPath;
