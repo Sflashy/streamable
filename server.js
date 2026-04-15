@@ -67,8 +67,10 @@ function normalizeToH264(inputPath, outputPath) {
   return new Promise((resolve) => {
     const ff = spawn('ffmpeg', [
       '-i', inputPath,
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
+      '-c:a', 'aac', '-ar', '48000', '-b:a', '192k',
       '-movflags', '+faststart',
       '-y', outputPath,
     ]);
