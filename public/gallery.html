@@ -339,6 +339,20 @@
 
     /* ── Animations ──────────────────────────────────── */
     @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+    /* ── Mobile ──────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .page { padding: 20px 14px 48px; }
+
+      header { margin-bottom: 24px; flex-wrap: wrap; align-items: center; }
+      .header-right { margin-left: 0; }
+
+      .controls-row { row-gap: 8px; }
+      .search-wrap { margin-left: 0; width: 100%; }
+      .search-input { width: 100% !important; }
+
+      #gallery-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+    }
   </style>
 </head>
 <body>

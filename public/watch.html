@@ -891,6 +891,42 @@
     header        { transform: translateY(-10px); }
     .player-section { transform: translateY(6px); }
     .info-bar     { transform: translateY(6px); }
+
+    /* ── Mobile ──────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .page { width: 100%; padding-bottom: 32px; }
+      header { padding: 12px 14px; }
+
+      /* Seek bar: bigger invisible hit area */
+      .seek-track {
+        height: 4px;
+        padding: 10px 0;
+        margin: -10px 0;
+      }
+      .seek-thumb { width: 14px; height: 14px; }
+
+      /* Volume slider: hidden on mobile (mute button stays) */
+      .volume-slider { display: none; }
+
+      /* Info bar: stack vertically */
+      .info-bar { flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px 0 20px; }
+      .video-title { max-width: 100%; white-space: normal; line-height: 1.4; }
+      .action-btns { flex-wrap: wrap; gap: 6px; width: 100%; }
+      .btn { flex: 1; min-width: 0; text-align: center; padding: 10px 8px; }
+
+      /* Modal margin */
+      .modal { margin: 0 14px; }
+      .modal-actions { flex-direction: column-reverse; gap: 6px; }
+      .modal-cancel, .modal-confirm { width: 100%; text-align: center; padding: 12px; }
+
+      /* Related grid 2 col */
+      .related-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    }
+
+    /* Controls always visible on touch devices (no hover) */
+    @media (hover: none) {
+      .controls { opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -1148,20 +1184,33 @@
     const seekTrack = document.getElementById('seek-track');
     let seeking = false;
 
-    function applySeek(e) {
+    function applySeek(clientX) {
       const rect = seekTrack.getBoundingClientRect();
-      const pct  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       vid.currentTime = pct * (vid.duration || 0);
     }
 
     seekTrack.addEventListener('mousedown', e => {
       e.preventDefault();
       seeking = true;
-      applySeek(e);
+      applySeek(e.clientX);
     });
 
-    document.addEventListener('mousemove', e => { if (seeking) applySeek(e); });
+    document.addEventListener('mousemove', e => { if (seeking) applySeek(e.clientX); });
     document.addEventListener('mouseup',   () => { seeking = false; });
+
+    // Touch seek
+    seekTrack.addEventListener('touchstart', e => {
+      e.preventDefault();
+      seeking = true;
+      applySeek(e.touches[0].clientX);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', e => {
+      if (seeking) { e.preventDefault(); applySeek(e.touches[0].clientX); }
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => { seeking = false; });
 
     // Volume
     const volSlider = document.getElementById('vol-slider');
